@@ -231,16 +231,19 @@ def test_a_status_change_without_a_note_keeps_the_note(client, finding_id):
     assert _status(db, fid)["note"] == "cleared with the mill"
 
 
-def test_reopening_drops_the_reason_for_the_decision(client, finding_id):
-    """A note explaining an acceptance, still attached once the finding is open
-    again, reads as a justification nobody stands behind."""
+def test_reopening_keeps_the_comment(client, finding_id):
+    """This once cleared the note, on the reasoning that a justification for an
+    acceptance should not hang on a finding that is open again. That column has
+    since become the Comments column an auditor types into, so clearing it now
+    would delete their own work every time they changed their mind."""
     api, _pid, _root = client
     fid, db = finding_id
     api.post(f"/api/findings/{fid}/status",
              json={"status": "accepted", "note": "cleared with the mill"})
     api.post(f"/api/findings/{fid}/status", json={"status": "open"})
     row = _status(db, fid)
-    assert row["status"] == "open" and row["note"] is None
+    assert row["status"] == "open"
+    assert row["note"] == "cleared with the mill"
 
 
 def test_an_unknown_status_is_refused(client, finding_id):

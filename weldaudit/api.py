@@ -75,6 +75,10 @@ class ImportRequest(BaseModel):
     path: str
 
 
+class CommentRequest(BaseModel):
+    text: str
+
+
 class _Job:
     """State of the currently running audit, polled by the UI."""
 
@@ -417,6 +421,31 @@ def create_app(db_path: str | Path) -> FastAPI:
             "rule_titles": {code: title for code, (title, _) in registry().items()},
         }
 
+    @app.post("/api/findings/{finding_id}/comment")
+    def set_comment(finding_id: int, body: CommentRequest) -> dict:
+        """Write what an auditor has to say about a finding.
+
+        Stored against the rule, segment and subject rather than the finding's
+        id, because every audit deletes its findings and builds them again —
+        a comment kept on the row would last until the next run. The finding
+        on screen is updated at the same time, so the table and the export
+        show it without waiting for another audit.
+        """
+        row = db.one(
+            """SELECT project_id, rule, IFNULL(segment,'') AS segment,
+                      IFNULL(subject,'') AS subject
+               FROM finding WHERE id=?""", (finding_id,))
+        if row is None:
+            raise HTTPException(404, "no such finding")
+        stored = db.set_comment(row["project_id"], row["rule"],
+                                row["segment"], row["subject"], body.text)
+        return {"comment": stored}
+
+    @app.get("/api/comments")
+    def comments(project_id: int) -> list[dict]:
+        """Every comment on this job, whether or not its finding still exists."""
+        return [dict(r) for r in db.comments(project_id)]
+
     @app.post("/api/findings/{finding_id}/status")
     def set_status(finding_id: int, body: StatusUpdate) -> dict:
         """Accept, dismiss, or put a finding back on the list.
@@ -426,35 +455,31 @@ def create_app(db_path: str | Path) -> FastAPI:
         it is pressed, and the thing that just disappeared may have been the
         critical one. Without a way back, the safe response to a mis-click is
         to re-run the whole audit.
+
+        The decision is stored against the rule, segment and subject rather
+        than the finding's id, because every audit deletes its findings and
+        builds them again. Kept on the row, a morning's review was gone by the
+        afternoon's run and every finding came back open with nothing to show
+        it had already been read.
         """
         if body.status not in ("open", "accepted", "dismissed"):
             raise HTTPException(400, "bad status")
-        row = db.one("SELECT status FROM finding WHERE id=?", (finding_id,))
+        row = db.one(
+            """SELECT project_id, rule, IFNULL(segment,'') AS segment,
+                      IFNULL(subject,'') AS subject, status
+               FROM finding WHERE id=?""", (finding_id,))
         if row is None:
             raise HTTPException(404, "no such finding")
-        with db.tx() as c:
-            if body.status == "open":
-                # Withdrawing a decision withdraws its reason too. A note
-                # saying why something was accepted, left on a finding that is
-                # open again, reads as a justification nobody stands behind.
-                c.execute(
-                    "UPDATE finding SET status='open', note=NULL WHERE id=?",
-                    (finding_id,),
-                )
-            elif body.note is None:
-                # Sending no note means "leave it as it was", not "erase it".
-                # This used to write NULL unconditionally, so every undo — and
-                # every second click on the same button — quietly threw away
-                # the reason somebody had typed.
-                c.execute(
-                    "UPDATE finding SET status=? WHERE id=?",
-                    (body.status, finding_id),
-                )
-            else:
-                c.execute(
-                    "UPDATE finding SET status=?, note=? WHERE id=?",
-                    (body.status, body.note, finding_id),
-                )
+
+        # A note supplied alongside the decision is a comment like any other;
+        # sending none means "leave what is there alone", not "erase it".
+        # Reopening no longer clears it either: the column stopped being a
+        # justification for an acceptance when it became the place an auditor
+        # writes what they found.
+        db.remember(row["project_id"], row["rule"], row["segment"],
+                    row["subject"], status=body.status,
+                    comment=body.note if body.note is not None else None)
+
         # What it was before, so the caller can offer an accurate undo. The
         # browser's copy of the row can be minutes old, or belong to a second
         # window; the database knows and it does not.

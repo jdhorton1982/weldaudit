@@ -647,6 +647,27 @@ CREATE TABLE IF NOT EXISTS ocr_cache (
 );
 
 -- Audit exceptions.
+CREATE TABLE IF NOT EXISTS finding_note (
+    id          INTEGER PRIMARY KEY,
+    project_id  INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+    -- What identifies the problem rather than the row. Findings are deleted
+    -- and rebuilt on every audit, so a comment written on finding.id lasts
+    -- until the next run and no longer. The rule, segment and subject are
+    -- what stay the same about "this heat, unapproved" between runs; the
+    -- message is not, because improving a rule rewrites it.
+    rule        TEXT NOT NULL,
+    segment     TEXT NOT NULL DEFAULT '',
+    subject     TEXT NOT NULL DEFAULT '',
+    comment     TEXT NOT NULL DEFAULT '',
+    -- accepted | dismissed. Kept here for the same reason as the comment:
+    -- `finding.status` is on a row that every audit deletes, so a decision
+    -- made on Monday was gone by Tuesday's run and the finding came back
+    -- open with nothing to say it had already been looked at.
+    status      TEXT,
+    made_at     TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(project_id, rule, segment, subject)
+);
+
 CREATE TABLE IF NOT EXISTS finding (
     id          INTEGER PRIMARY KEY,
     project_id  INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE,
@@ -1054,6 +1075,106 @@ class Database:
                 "already_here": len(rows) - added}
 
     # -- findings -----------------------------------------------------------
+
+
+    # -- comments an auditor writes on a finding ------------------------------
+    #
+    # Kept out of `finding` because that table is emptied and rebuilt by every
+    # audit. A comment is the one thing in the report a person wrote, and it
+    # has to outlive the run that prompted it.
+
+    def remember(self, project_id: int, rule: str, segment: str, subject: str,
+                 *, comment: str | None = None, status: str | None = None) -> dict:
+        """Record a comment, a decision, or both, against the *problem*.
+
+        Pass only what is changing; the other is left as it was. A row that
+        ends up holding neither is deleted rather than left as an empty
+        marker.
+        """
+        segment, subject = segment or "", subject or ""
+        where = (project_id, rule, segment, subject)
+        had = self.one(
+            """SELECT comment, status FROM finding_note
+               WHERE project_id=? AND rule=? AND segment=? AND subject=?""", where)
+
+        # There may be no row yet; "leave it as it was" then means empty.
+        text = (had["comment"] if had else "") if comment is None             else " ".join(comment.split())
+        state = (had["status"] if had else None) if status is None else status
+        if state == "open":
+            state = None                   # back on the list is not a decision
+
+        with self.tx() as c:
+            if not text and not state:
+                c.execute(
+                    """DELETE FROM finding_note
+                       WHERE project_id=? AND rule=? AND segment=? AND subject=?""",
+                    where)
+            else:
+                c.execute(
+                    """INSERT INTO finding_note(project_id, rule, segment,
+                                                subject, comment, status)
+                       VALUES(?,?,?,?,?,?)
+                       ON CONFLICT(project_id, rule, segment, subject)
+                       DO UPDATE SET comment=excluded.comment,
+                                     status=excluded.status,
+                                     made_at=CURRENT_TIMESTAMP""",
+                    (*where, text or "", state))
+            # The findings on screen carry it too, so the table and the export
+            # show it without waiting for another audit.
+            c.execute(
+                """UPDATE finding SET note=?, status=?
+                   WHERE project_id=? AND rule=? AND IFNULL(segment,'')=?
+                     AND IFNULL(subject,'')=?""",
+                (text or None, state or "open", *where))
+        return {"comment": text or "", "status": state or "open"}
+
+    def set_comment(self, project_id: int, rule: str, segment: str,
+                    subject: str, text: str) -> str:
+        """Write a comment, or clear it with an empty string."""
+        return self.remember(project_id, rule, segment, subject,
+                             comment=text or "")["comment"]
+
+    def set_decision(self, project_id: int, rule: str, segment: str,
+                     subject: str, status: str) -> str:
+        """Accept, dismiss, or put a finding back on the list."""
+        return self.remember(project_id, rule, segment, subject,
+                             status=status)["status"]
+
+    def reattach_comments(self, project_id: int) -> int:
+        """Put the comments and decisions back onto freshly rebuilt findings.
+
+        Called after every audit. Without it a job re-audited on Tuesday shows
+        no sign that half its findings were read and settled on Monday.
+        """
+        with self.tx() as c:
+            cur = c.execute(
+                """UPDATE finding SET
+                       note = (SELECT NULLIF(n.comment,'') FROM finding_note n
+                               WHERE n.project_id = finding.project_id
+                                 AND n.rule = finding.rule
+                                 AND n.segment = IFNULL(finding.segment,'')
+                                 AND n.subject = IFNULL(finding.subject,'')),
+                       status = COALESCE(
+                           (SELECT n.status FROM finding_note n
+                            WHERE n.project_id = finding.project_id
+                              AND n.rule = finding.rule
+                              AND n.segment = IFNULL(finding.segment,'')
+                              AND n.subject = IFNULL(finding.subject,'')),
+                           'open')
+                   WHERE project_id=? AND EXISTS (
+                       SELECT 1 FROM finding_note n
+                       WHERE n.project_id = finding.project_id
+                         AND n.rule = finding.rule
+                         AND n.segment = IFNULL(finding.segment,'')
+                         AND n.subject = IFNULL(finding.subject,''))""",
+                (project_id,))
+            return cur.rowcount
+
+    def comments(self, project_id: int) -> list[sqlite3.Row]:
+        return self.q(
+            """SELECT rule, segment, subject, comment, status, made_at
+               FROM finding_note WHERE project_id=?
+               ORDER BY rule, segment, subject""", (project_id,))
 
     def clear_findings(self, project_id: int) -> None:
         with self.tx() as c:

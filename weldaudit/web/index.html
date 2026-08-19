@@ -104,6 +104,15 @@
   td.subject { font-family: ui-monospace, Consolas, monospace; white-space: nowrap; }
   td.msg { min-width: 380px; }
   td.detail { color: var(--muted); font-size: 12px; max-width: 260px; }
+  /* A column you type in, so it invites the click rather than looking like
+     one more thing the program printed. */
+  td.comment { min-width: 180px; max-width: 300px; cursor: text; font-size: 12px; }
+  td.comment i { color: var(--muted); opacity: .55; font-style: normal; }
+  td.comment:hover { background: var(--bg); }
+  td.comment textarea { width: 100%; min-height: 46px; font: inherit;
+                        color: inherit; background: var(--panel);
+                        border: 1px solid var(--accent); border-radius: 4px;
+                        padding: 4px 6px; resize: vertical; }
   a { color: var(--accent); }
   .act { display: flex; gap: 4px; }
   .act button { padding: 3px 8px; font-size: 12px; }
@@ -554,8 +563,9 @@ async function loadFindings() {
   }
   t.innerHTML = `<thead><tr>
       <th>Sev</th><th>Rule</th><th>Segment</th><th>Subject</th>
-      <th>Finding</th><th>Detail</th><th>Source</th><th></th></tr></thead><tbody>`
-    + rows.map(r => `<tr class="${r.status !== 'open' ? 'done' : ''}">
+      <th>Finding</th><th>Detail</th><th>Source</th><th>Comments</th>
+      <th></th></tr></thead><tbody>`
+    + rows.map(r => `<tr data-id="${r.id}" class="${r.status !== 'open' ? 'done' : ''}">
         <td class="sev ${r.severity}">${r.severity}${
              r.status !== 'open' ? `<em>${esc(r.status)}</em>` : ''}</td>
         <td class="rule" title="${esc(state.facets.rule_titles[r.rule] || '')}">${esc(r.rule)}</td>
@@ -566,6 +576,9 @@ async function loadFindings() {
         <td>${r.document_id
               ? `<a href="/api/document/${r.document_id}" target="_blank">${esc(r.filename || 'open')}</a>`
               : ''}</td>
+        <td class="comment" onclick="editComment(${r.id})"
+            title="Click to write a comment">${
+            r.note ? esc(r.note) : '<i>add…</i>'}</td>
         <td class="act">
           ${r.status === 'open' ? `
           <button onclick="mark(${r.id},'accepted')" title="Confirmed as a real exception">✓</button>
@@ -584,6 +597,56 @@ function fmtDetail(detail) {
     return Object.entries(d).map(([k, v]) => `${k}: ${v}`).join(' · ');
   } catch { return detail; }
 }
+
+// Comments are stored against the rule, segment and subject rather than the
+// finding's id, because every audit deletes its findings and builds them
+// again. Written on the row, a comment would last until the next run — and
+// the run is exactly when somebody wants to see what they said last time.
+window.editComment = (id) => {
+  const cell = document.querySelector(`tr[data-id="${id}"] td.comment`)
+            || [...document.querySelectorAll('#findings tbody tr')]
+                 .map(tr => tr.querySelector('td.comment'))
+                 .find(td => td && td.onclick && td.onclick.toString().includes(`(${id})`));
+  if (!cell || cell.querySelector('textarea')) return;
+  const row = (state.rows || []).find(r => r.id === id);
+  const was = (row && row.note) || '';
+  cell.onclick = null;
+  cell.innerHTML = '';
+  const box = document.createElement('textarea');
+  box.value = was;
+  box.placeholder = 'What you found, or what you did about it…';
+  cell.appendChild(box);
+  box.focus();
+  box.setSelectionRange(box.value.length, box.value.length);
+
+  let closing = false;
+  const finish = async (save) => {
+    if (closing) return;
+    closing = true;
+    const text = save ? box.value : was;
+    try {
+      if (save && box.value !== was) {
+        const got = await api(`/api/findings/${id}/comment`, {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ text: box.value })
+        });
+        if (row) row.note = got.comment;
+        toast(got.comment ? 'Comment saved' : 'Comment cleared');
+      }
+    } catch (e) {
+      toast('Could not save the comment: ' + e.message);
+    }
+    const shown = (row ? row.note : text) || '';
+    cell.innerHTML = shown ? esc(shown) : '<i>add…</i>';
+    cell.onclick = () => editComment(id);
+  };
+  box.onblur = () => finish(true);
+  box.onkeydown = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+    // Enter saves; Shift+Enter is a new line, because some of these run long.
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); box.blur(); }
+  };
+};
 
 const MARKED = { accepted: 'Accepted', dismissed: 'Dismissed', open: 'Back on the list' };
 

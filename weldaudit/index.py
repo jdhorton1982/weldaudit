@@ -125,9 +125,9 @@ def index_project(
             c.execute(
                 f"DELETE FROM {child} WHERE report_id IN "
                 "(SELECT id FROM coating_report WHERE project_id=?)", (project_id,))
-        # NB: `correction` is deliberately absent from this list. Everything
-        # else here can be rebuilt by reading the documents again; a value a
-        # person typed cannot.
+        # NB: `correction` and `finding_note` are deliberately absent from
+        # this list. Everything else here can be rebuilt by reading the
+        # documents again; a value a person typed cannot.
         for table in ("finding", "material", "installed_heat", "welder_pass",
                       "welder_cert", "nde_shot", "reader_sheet", "weld",
                       "vision_conflict",

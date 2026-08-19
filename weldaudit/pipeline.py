@@ -206,6 +206,9 @@ def run(
     db.clear_findings(project_id)
     found = rules.sort_findings(rules.run_all(db, project_id, run_id, only=only_rules))
     db.add_findings(found)
+    # Findings are rebuilt from scratch every run; the comments people wrote on
+    # them are not, and are put back here.
+    db.reattach_comments(project_id)
 
     with db.tx() as c:
         c.execute(

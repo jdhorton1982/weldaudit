@@ -83,7 +83,7 @@ def _findings_sheet(db, project_id, wb, head, wrap, sev_fmt) -> None:
     ws = wb.add_worksheet("Findings")
     cols = [("Severity", 10), ("Rule", 9), ("Segment", 30), ("Subject", 16),
             ("Finding", 78), ("Detail", 40), ("Source document", 46),
-            ("Full path", 96), ("Status", 10)]
+            ("Full path", 96), ("Status", 10), ("Comments", 46)]
     for i, (label, width) in enumerate(cols):
         ws.write(0, i, label, head)
         ws.set_column(i, i, width)
@@ -119,6 +119,10 @@ def _findings_sheet(db, project_id, wb, head, wrap, sev_fmt) -> None:
         # record, and what survives the workbook being emailed on.
         ws.write(r, 7, "\n".join(paths), wrap)
         ws.write(r, 8, row["status"] or "open", wrap)
+        # What a person wrote about this finding. Last column because it is the
+        # one an auditor adds to, and a column you type in belongs at the end of
+        # the row rather than between two the program owns.
+        ws.write(r, 9, (row["note"] if "note" in row.keys() else "") or "", wrap)
 
 
 def _flatten(detail: str | None) -> str:
@@ -633,7 +637,8 @@ def write_csv(db: Database, project_id: int, path: str | Path) -> Path:
     with path.open("w", newline="", encoding="utf-8-sig") as handle:
         out = csv.writer(handle)
         out.writerow(["Severity", "Rule", "Segment", "Subject", "Finding",
-                      "Detail", "Source document", "Full path", "Status"])
+                      "Detail", "Source document", "Full path", "Status",
+                      "Comments"])
         for r in rows:
             keys = r.keys()
             out.writerow([
@@ -643,5 +648,6 @@ def write_csv(db: Database, project_id: int, path: str | Path) -> Path:
                 r["doc_path"] or r["filename"] or "",
                 " | ".join(paths_for(db, r)),
                 (r["status"] if "status" in keys else "") or "open",
+                (r["note"] if "note" in keys else "") or "",
             ])
     return path
