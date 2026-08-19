@@ -150,4 +150,6 @@ because those shapes are what the code exists to survive.
 
 ## Licence
 
-Not yet chosen.
+MIT — see [LICENSE](LICENSE). Use it, change it, ship it; it comes with no
+warranty, which for a tool that reads safety records is worth reading rather
+than skipping.
