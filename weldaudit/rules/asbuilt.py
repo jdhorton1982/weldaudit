@@ -355,6 +355,59 @@ def _runs(joints: list) -> dict[tuple, list]:
     return out
 
 
+
+#: How closely a station step and the pipe between two joints agree when the
+#: drawing is right. Measured across a job: 96% of steps land within two feet
+#: and 82% within one. Five is loose enough for a survey and nowhere near the
+#: fifteen to forty feet a mistyped station produces.
+_AGREES_WITHIN = 5.0
+
+#: Steps that must actually be measurable before a run is excused as merely
+#: out of order.
+_ENOUGH_TO_JUDGE = 2
+
+
+def _only_written_out_of_order(joints: list[dict]) -> bool:
+    """Is this run consistent once the joints are read in station order?
+
+    The drawing is a column per joint, and the columns are usually laid out in
+    the order the pipe was laid. Usually. A pup welded in beside a coupling
+    gets written in the next free column, which can put it after the joint it
+    physically precedes — and reading the columns in order then shows the
+    survey running backwards three feet where thirty-nine feet of pipe sits.
+    That is a drawing written out of sequence, not a drawing that disagrees
+    with itself, and reporting it sends somebody to check a stretch that is
+    perfectly correct.
+
+    A mistyped station does not survive this test. Sorting by station puts the
+    wrong value in the wrong place, and the gaps it opens either side stay
+    wide: on one real sheet a station typed 42+17 for 42+72 still left
+    twenty-four and thirty-eight foot holes after sorting. Only a run where
+    every step agrees closely is treated as merely out of order.
+    """
+    ordered = sorted(joints, key=lambda j: j["station_ft"] or 0)
+    if [id(j) for j in ordered] == [id(j) for j in joints]:
+        return False                       # already in station order
+
+    measured = 0
+    for a, b in zip(ordered, ordered[1:]):
+        length = _feet(a["length"])
+        described = (a["description"] or "").strip()
+        if not length or length <= 0 or not described or _NOT_PIPE.search(described):
+            continue
+        step = (b["station_ft"] or 0) - (a["station_ft"] or 0)
+        if abs(step - length) > _AGREES_WITHIN:
+            return False
+        measured += 1
+
+    # An excuse has to be earned. The LENGTH cell is filled on some joints and
+    # not others, so a run with one measurable step "agrees" in any order at
+    # all — including the order that hides a station typed 221+68 for 121+68.
+    # Two steps is the least that can distinguish a drawing written out of
+    # sequence from one that simply has little to check.
+    return measured >= _ENOUGH_TO_JUDGE
+
+
 @register("AB-07", "As-built station disagrees with the pipe between the joints")
 def station_length_conflict(db: Database, project_id: int, run_id: str) -> list[Finding]:
     """The surveyed distance between two joints against the pipe laid between.
@@ -382,6 +435,8 @@ def station_length_conflict(db: Database, project_id: int, run_id: str) -> list[
     for (segment, sheet, band), joints in sorted(_runs(_joints(db, project_id)).items()):
         steps = [b["station_ft"] - a["station_ft"] for a, b in zip(joints, joints[1:])]
         if not steps:
+            continue
+        if _only_written_out_of_order(joints):
             continue
         forward = 1 if sum(1 for s in steps if s > 0) * 2 >= len(steps) else -1
         for a, b in zip(joints, joints[1:]):
