@@ -995,14 +995,24 @@ async function askForAJob() {
 async function offerTheReadings() {
   let r;
   try { r = await api('/api/readings'); } catch { return; }
-  if (r.cached || !r.offer) return;          // already has some, or none to offer
+  // Offer whenever the file holds more than this machine has — not only when
+  // it has none. Pressing "Read scans" leaves a hundred or so readings from
+  // the offline OCR, and testing `cached` alone then silenced the offer for
+  // good while the eight hundred paid readings were still missing. The report
+  // stays short and nothing on screen says why.
+  if (!r.offer || r.offered <= r.cached) return;
   const bar = $('#notice');
-  $('#notice-text').innerHTML =
-    `This machine has read no certificate pages yet, so the manufacturer on a `
-    + `scanned certificate cannot be checked against the AML — those findings `
-    + `will be missing from every report until it has. `
-    + `<b>${r.offered.toLocaleString()} readings</b> are available in `
-    + `${esc(r.offer)}.`;
+  $('#notice-text').innerHTML = r.cached
+    ? `This machine has <b>${r.cached.toLocaleString()}</b> certificate pages `
+      + `read, and <b>${r.offered.toLocaleString()}</b> are available in `
+      + `${esc(r.offer)}. Until they are loaded, manufacturers on the pages it `
+      + `has not read cannot be checked against the AML, and those findings `
+      + `will be missing from every report.`
+    : `This machine has read no certificate pages yet, so the manufacturer on a `
+      + `scanned certificate cannot be checked against the AML — those findings `
+      + `will be missing from every report until it has. `
+      + `<b>${r.offered.toLocaleString()} readings</b> are available in `
+      + `${esc(r.offer)}.`;
   const go = $('#notice-do');
   go.textContent = 'Load them';
   go.onclick = async () => {
@@ -1015,6 +1025,7 @@ async function offerTheReadings() {
       bar.hidden = true;
       toast(`${got.added.toLocaleString()} readings loaded. Run the audit `
           + `again to fold them in.`);
+      offerTheReadings();          // a second file may still hold more
     } catch (e) {
       toast('Could not load them: ' + e.message);
       go.disabled = false;

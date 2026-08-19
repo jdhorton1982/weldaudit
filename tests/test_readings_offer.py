@@ -74,14 +74,33 @@ def test_accepting_the_offer_loads_them(fresh):
     assert fresh.get("/api/readings").json()["cached"] == 3
 
 
-def test_a_machine_that_already_has_readings_is_not_pestered(fresh):
-    """The offer is for the machine that has read nothing. Once it has, the
-    question is answered and asking again is noise."""
+def test_a_machine_holding_fewer_readings_is_still_offered_them(fresh, a_cache):
+    """The bug this replaced: the offer tested `cached` for zero, so pressing
+    "Read scans" — which leaves a hundred or so readings from the offline OCR
+    — silenced it for good while eight hundred paid readings were still
+    missing. The page compares the counts instead."""
+    from weldaudit.db import Database
+
+    body = fresh.get("/api/readings").json()
+    assert body["cached"] == 0 and body["offered"] == 3
+
+    # one reading of its own, far short of what the file holds
+    db = Database(a_cache.parent.parent / "fresh.db")
+    with db.tx() as c:
+        c.execute("""INSERT INTO ocr_cache(sha1, page_no, model, payload)
+                     VALUES('local', 0, 'local:ocr', '{}')""")
+    body = fresh.get("/api/readings").json()
+    assert body["cached"] == 1
+    assert body["offered"] > body["cached"], "the file still has more to give"
+
+
+def test_a_machine_with_everything_is_not_pestered(fresh):
+    """Once it holds as much as the file does, the question is answered."""
     offer = fresh.get("/api/readings").json()["offer"]
     fresh.post("/api/readings/import", json={"path": offer})
-    assert fresh.get("/api/readings").json()["cached"] == 3
-    # the page only offers when cached is 0; that is the whole condition
-    assert fresh.get("/api/readings").json()["offered"] == 3
+    body = fresh.get("/api/readings").json()
+    assert body["cached"] == 3
+    assert body["offered"] <= body["cached"]
 
 
 def test_nothing_beside_the_program_means_no_offer(tmp_path, monkeypatch):
