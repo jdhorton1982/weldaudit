@@ -1,0 +1,25 @@
+openpyxl>=3.1
+pdfplumber>=0.11
+pypdf>=5.0
+PyMuPDF>=1.24
+XlsxWriter>=3.2
+rapidfuzz>=3.9
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.8
+anthropic>=0.40
+pytest>=8.0
+
+# Verify TLS against the Windows certificate store. Corporate networks
+# inspect TLS, and Python's own CA bundle does not carry the employer's
+# root, so without this the API fails with what looks like a network error.
+truststore>=0.9
+
+# A window of its own rather than a browser tab, via the Edge WebView2 runtime
+# that ships with Windows 10 and 11.
+pywebview>=5.0
+
+# Reading scanned certificates with no API key and no network. Chosen over
+# Tesseract because it installs from pip and bundles into the exe, where
+# Tesseract would be a second thing every auditor had to install.
+rapidocr-onnxruntime>=1.2

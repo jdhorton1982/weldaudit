@@ -1,0 +1,1035 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WeldAudit</title>
+<link rel="icon" type="image/svg+xml" href="/logo.svg">
+<style>
+  :root {
+    --bg: #f6f7f9;      --panel: #fff;      --ink: #17191c;    --muted: #6b7280;
+    --line: #e3e6ea;    --accent: #1f3864;
+    --critical: #c00000; --major: #c55a11;  --minor: #a97b00;  --info: #667085;
+    --ok: #1a7f4b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a;    --panel: #1c1f25;   --ink: #e8eaed;    --muted: #9aa3af;
+      --line: #2b3038;  --accent: #7da2e8;
+      --critical: #ff6b6b; --major: #f0913f; --minor: #d9b64a; --info: #9aa3af;
+      --ok: #4ade80;
+    }
+  }
+  * { box-sizing: border-box; }
+  /* The window is the scroll viewport, not the page.
+
+     A findings table is wider than any screen, and its horizontal scrollbar
+     lives at the bottom edge of the table. With a page-scrolling layout that
+     edge is a thousand rows down: reaching sideways meant scrolling to the
+     very end of the list first, moving the bar, then scrolling back up to see
+     the effect. Fixing the body to the window height and giving the table pane
+     its own overflow keeps that bar on screen at all times — and makes the
+     sticky header row stick to the table rather than sliding under the
+     toolbar, which is the same bug seen from the other side. */
+  html { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.5 "Segoe UI", system-ui, sans-serif;
+    height: 100%; display: flex; flex-direction: column; overflow: hidden;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 12px 18px; background: var(--panel); border-bottom: 1px solid var(--line);
+    flex: none; z-index: 10;
+  }
+  h1 { font-size: 16px; margin: 0 12px 0 0; letter-spacing: .3px; }
+  /* The mark takes its colours from the theme like everything else. The tick
+     carries a gap in the ring behind it, and that gap has to be painted the
+     colour of whatever it sits on — the toolbar panel, not the page
+     background, or it shows as a halo of the wrong shade in dark mode. */
+  .logo { width: 30px; height: 30px; flex: none; display: block;
+          --logo-pipe: var(--accent); --logo-tick: var(--ok);
+          --logo-ground: var(--panel); --logo-bead: var(--panel); }
+  h1 span { color: var(--accent); }
+  input, select, button {
+    font: inherit; color: inherit; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px;
+  }
+  input[type=text] { min-width: 260px; }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  main { padding: 18px; flex: 1 1 auto; min-height: 0;
+         display: flex; flex-direction: column; }
+  /* min-height:0 on every link of the chain: a flex item defaults to
+     min-height:auto, which refuses to shrink below its content, and one
+     missing link lets the table push the pane past the bottom of the window
+     and takes the scrollbar off screen again. */
+  main > section { flex: 1 1 auto; min-height: 0;
+                   display: flex; flex-direction: column; }
+  main > section[hidden] { display: none; }
+  .cards, nav, .filters { flex: none; }
+  .cards { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 10px 16px; min-width: 108px;
+  }
+  .card b { display: block; font-size: 24px; line-height: 1.2; }
+  .card small { color: var(--muted); text-transform: uppercase; font-size: 11px; letter-spacing: .6px; }
+  .critical { color: var(--critical); } .major { color: var(--major); }
+  .minor { color: var(--minor); }       .info { color: var(--info); }
+  nav { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
+  nav button {
+    border: none; background: none; border-bottom: 2px solid transparent;
+    border-radius: 0; padding: 8px 14px; color: var(--muted);
+  }
+  nav button.on { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .tablewrap { overflow: auto; background: var(--panel);
+               border: 1px solid var(--line); border-radius: 8px;
+               flex: 1 1 auto; min-height: 140px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line);
+           vertical-align: top; }
+  th { background: var(--bg); font-size: 11px; text-transform: uppercase;
+       letter-spacing: .5px; color: var(--muted); position: sticky; top: 0;
+       z-index: 2; }
+  tr:last-child td { border-bottom: none; }
+  tr.done { opacity: .45; }
+  tr.sub td { color: var(--muted); font-size: 12px; padding-top: 2px; padding-bottom: 2px;
+              border-bottom: none; }
+  tr.sub td:nth-child(2) { padding-left: 28px; }
+  td.sev { font-weight: 700; white-space: nowrap; text-transform: uppercase; font-size: 11px; }
+  td.rule { font-family: ui-monospace, Consolas, monospace; white-space: nowrap; color: var(--muted); }
+  td.subject { font-family: ui-monospace, Consolas, monospace; white-space: nowrap; }
+  td.msg { min-width: 380px; }
+  td.detail { color: var(--muted); font-size: 12px; max-width: 260px; }
+  a { color: var(--accent); }
+  .act { display: flex; gap: 4px; }
+  .act button { padding: 3px 8px; font-size: 12px; }
+  .empty { padding: 40px; text-align: center; color: var(--muted); }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; min-width: 90px; }
+  .bar i { display: block; height: 100%; background: var(--accent); }
+  #toast {
+    position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 10px 18px; box-shadow: 0 6px 20px rgba(0,0,0,.18); display: none;
+    align-items: center; gap: 14px; max-width: min(720px, 92vw); z-index: 60;
+  }
+  #toast.show { display: flex; }
+  #toast span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #toast button { padding: 3px 12px; font-size: 13px; font-weight: 600;
+                  color: var(--accent); border-color: var(--accent); flex: none; }
+  /* Faded is enough to say "dealt with" and not enough to say how. Accepted
+     and dismissed mean opposite things to whoever reads the book next. */
+  .sev em { display: block; font-style: normal; font-weight: 600; font-size: 10px;
+            letter-spacing: 0; color: var(--muted); margin-top: 2px; }
+  .miss { color: var(--major); font-size: 12px; }
+  /* A toast was the wrong shape for this. It says the one thing a fresh
+     machine must act on before its reports mean anything, and it said it for
+     nine seconds — twice somebody audited a whole job without seeing it.
+     This stays until it is dealt with. */
+  #notice { display: flex; align-items: center; gap: 12px; flex: none;
+            padding: 10px 18px; background: var(--panel);
+            border-bottom: 1px solid var(--major); color: var(--ink);
+            font-size: 13px; }
+  #notice[hidden] { display: none; }
+  #notice span { flex: 1; }
+  #notice button { flex: none; padding: 4px 12px; font-size: 13px; }
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;
+  align-items:center;justify-content:center;z-index:50}
+.sheet[hidden]{display:none}
+/* var(--panel)/var(--ink), not #fff: this app has a dark theme, and a
+   hardcoded white box renders near-white text on white — the picker was
+   legible in light mode and invisible in dark. */
+.sheet-box{background:var(--panel);color:var(--ink);border:1px solid var(--line);
+  border-radius:10px;padding:16px;width:min(680px,92vw);
+  display:flex;flex-direction:column;gap:10px;box-shadow:0 12px 40px rgba(0,0,0,.45)}
+.pick-list{height:46vh;overflow:auto;border:1px solid var(--line);
+  border-radius:6px;background:var(--bg)}
+.pick-list div{padding:7px 10px;cursor:pointer;font-size:13px;color:var(--ink)}
+.pick-list div:hover{background:var(--accent);color:#fff}
+/* The stored-audit list is not a picker: its rows carry buttons, so the
+   whole-row hover highlight the folder picker uses would be a lie about what
+   clicking does. */
+.job{display:flex;align-items:center;gap:12px;padding:9px 11px;
+  border-bottom:1px solid var(--line)}
+.job:last-child{border-bottom:none}
+.job:hover{background:transparent;color:inherit}
+.job .who{flex:1;min-width:0}
+.job b{display:block;font-size:13px}
+.job small{display:block;color:var(--muted);font-size:11px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.job .gone{color:var(--major)}
+.job button{padding:3px 10px;font-size:12px;flex:none}
+.job .danger{color:var(--critical);border-color:var(--critical);font-weight:600}
+.confirm{background:var(--bg);padding:10px 11px;border-bottom:1px solid var(--line)}
+.confirm p{margin:0 0 8px;font-size:12px;line-height:1.45}
+.confirm .row{display:flex;gap:8px;justify-content:flex-end}
+.confirm input{width:100%;min-width:0}
+.confirm .why{color:var(--critical);font-size:12px;margin:6px 0 0}
+/* Below this there is no height left to divide up, and a fixed frame would
+   clip the toolbar. Scrolling the page is worse, but it is never unusable. */
+@media (max-height: 520px) {
+  body { height: auto; overflow: visible; }
+  main, main > section { display: block; min-height: 0; }
+  .tablewrap { max-height: none; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img"
+       aria-label="WeldAudit">
+    <!-- A girth weld seen head-on. The ring is the pipe; the ridges laid across
+         the upper-left of it are the bead; the tick is the part this program
+         does. Head-on rather than in profile because it stays symmetrical, and
+         a symmetrical mark survives sixteen pixels: there the ridges vanish and
+         a ring with a tick in it still reads. -->
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="32" cy="32" r="20" stroke="var(--logo-pipe, #1F3864)"
+              stroke-width="8.5"/>
+      <g stroke="var(--logo-bead, #ffffff)" stroke-width="1.4" opacity="0.5">
+        <path d="M30.1 13.8 L29.7 10.5"/>
+        <path d="M26.6 14.5 L25.7 11.3"/>
+        <path d="M23.4 15.8 L21.8 12.9"/>
+        <path d="M20.5 17.7 L18.4 15.2"/>
+        <path d="M17.9 20.2 L15.4 18.1"/>
+        <path d="M16.0 23.1 L13.1 21.5"/>
+        <path d="M14.5 26.3 L11.4 25.3"/>
+        <path d="M13.8 29.8 L10.5 29.4"/>
+        <path d="M13.7 33.3 L10.4 33.5"/>
+        <path d="M14.3 36.7 L11.1 37.6"/>
+        <path d="M15.5 40.0 L12.5 41.5"/>
+        <path d="M17.3 43.0 L14.7 45.0"/>
+        <path d="M19.7 45.6 L17.5 48.1"/>
+      </g>
+      <path d="M24 33.5 l6.5 6.5 l14.5 -16" stroke="var(--logo-ground, #f6f7f9)"
+            stroke-width="11.5"/>
+      <path d="M24 33.5 l6.5 6.5 l14.5 -16" stroke="var(--logo-tick, #1a7f4b)"
+            stroke-width="6"/>
+    </g>
+  </svg>
+  <h1>Weld<span>Audit</span></h1>
+  <select id="project" title="Audited project"></select>
+  <input type="text" id="root" placeholder="Folder to audit, e.g. C:\Users\...\the operator\GL 31">
+  <button id="manage" title="Remove audits you no longer need">Manage…</button>
+  <button id="browse" title="Pick the folder instead of typing it">Browse…</button>
+  <button class="primary" id="go">Run audit</button>
+  <button id="ocr" title="Read this job's scanned certificates on this machine — free, offline">Read scans</button>
+  <span id="progress" style="color:var(--muted)"></span>
+  <span style="flex:1"></span>
+  <select id="fmt" title="Report format">
+    <option value="xlsx">Excel</option>
+    <option value="csv">CSV</option>
+  </select>
+  <button id="save" title="Write the report into the job folder">Save to job folder</button>
+  <button id="export">Download</button>
+</header>
+
+<div id="picker" class="sheet" hidden>
+  <div class="sheet-box">
+    <h3 style="margin:0">Choose the folder to audit</h3>
+    <div id="pick-path" style="font-size:12px;color:var(--muted);word-break:break-all"></div>
+    <div id="pick-list" class="pick-list"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button id="pick-cancel">Cancel</button>
+      <button class="primary" id="pick-use">Use this folder</button>
+    </div>
+  </div>
+</div>
+
+<div id="jobs" class="sheet" hidden>
+  <div class="sheet-box">
+    <h3 style="margin:0">Stored audits</h3>
+    <div style="font-size:12px;color:var(--muted)">
+      Removing an audit deletes what WeldAudit recorded about a folder. The
+      folder and its documents are never touched, and pages already read stay
+      cached — auditing the same job again re-reads nothing.
+    </div>
+    <div id="jobs-list" class="pick-list"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button id="jobs-close">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="notice" hidden>
+  <span id="notice-text"></span>
+  <button id="notice-do" class="primary"></button>
+  <button id="notice-hide">Not now</button>
+</div>
+
+<main>
+  <div class="cards" id="cards"></div>
+
+  <nav>
+    <button data-tab="findings" class="on">Findings</button>
+    <button data-tab="coverage">NDE coverage</button>
+    <button data-tab="pressure">Pressure tests</button>
+    <button data-tab="coating">Coating</button>
+    <button data-tab="flanges">Flange bolt-up</button>
+    <button data-tab="procedures">Procedures</button>
+    <button data-tab="welders">Welders</button>
+    <button data-tab="backfill">Backfill</button>
+    <button data-tab="asbuilt">As-built</button>
+    <button data-tab="completeness">Book completeness</button>
+  </nav>
+
+  <section id="tab-findings">
+    <div class="filters">
+      <select id="f-severity"><option value="">All severities</option></select>
+      <select id="f-rule"><option value="">All rules</option></select>
+      <select id="f-segment"><option value="">All segments</option></select>
+      <select id="f-status">
+        <option value="open">Open</option>
+        <option value="">Any status</option>
+        <option value="accepted">Accepted</option>
+        <option value="dismissed">Dismissed</option>
+      </select>
+      <input type="text" id="f-q" placeholder="Search text…">
+      <span id="count" style="align-self:center;color:var(--muted)"></span>
+    </div>
+    <div class="tablewrap"><table id="findings"></table></div>
+  </section>
+
+  <section id="tab-coverage" hidden><div class="tablewrap"><table id="coverage"></table></div></section>
+  <section id="tab-pressure" hidden><div class="tablewrap"><table id="pressure"></table></div></section>
+  <section id="tab-coating" hidden><div class="tablewrap"><table id="coating"></table></div></section>
+  <section id="tab-flanges" hidden><div class="tablewrap"><table id="flanges"></table></div></section>
+  <section id="tab-procedures" hidden><div class="tablewrap"><table id="procedures"></table></div></section>
+  <section id="tab-welders" hidden><div class="tablewrap"><table id="welders"></table></div></section>
+  <section id="tab-backfill" hidden><div class="tablewrap"><table id="backfill"></table></div></section>
+  <section id="tab-asbuilt" hidden><div class="tablewrap"><table id="asbuilt"></table></div></section>
+  <section id="tab-completeness" hidden><div class="tablewrap"><table id="completeness"></table></div></section>
+</main>
+
+<div id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const api = async (path, opts) => {
+  const r = await fetch(path, opts);
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
+  return r.json();
+};
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+let state = { project: null, facets: {} };
+
+// An optional action turns the toast into the undo path for something that
+// has already left the screen. It stays up nearly three times as long in that
+// case: noticing a wrong click, reading what happened and reaching the button
+// does not fit in three seconds.
+function toast(msg, action) {
+  const t = $('#toast');
+  t.innerHTML = '';
+  const line = document.createElement('span');
+  line.textContent = msg;
+  t.appendChild(line);
+  if (action) {
+    const b = document.createElement('button');
+    b.textContent = action.label;
+    b.onclick = () => { hideToast(); action.run(); };
+    t.appendChild(b);
+  }
+  t.classList.add('show');
+  clearTimeout(t._t);
+  t._t = setTimeout(hideToast, action ? 9000 : 3200);
+}
+
+function hideToast() {
+  const t = $('#toast');
+  clearTimeout(t._t);
+  t.classList.remove('show');
+}
+
+// -- stored audits ----------------------------------------------------------
+//
+// One audit is stored per folder ever pointed at, including the same job
+// indexed twice under two names, and they stay in the dropdown forever. The
+// only way to remove one used to be deleting the whole database — which also
+// threw away every page reading that had been paid for.
+
+const plural = (n, one, many) => `${n} ${n === 1 ? one : (many || one + 's')}`;
+
+function whenAudited(iso) {
+  if (!iso) return 'never audited';
+  // Two shapes reach here: '2026-08-19T12:18:43+00:00' written by the indexer,
+  // and SQLite's own '2026-08-19 12:18:43', which carries no zone and is UTC.
+  // Appending a Z to the first produces '...+00:00Z', which parses to NaN.
+  let text = iso.replace(' ', 'T');
+  if (!/(Z|[+-]\d\d:?\d\d)$/.test(text)) text += 'Z';
+  const at = Date.parse(text);
+  if (isNaN(at)) return 'audited ' + iso.slice(0, 10);
+  const when = new Date(at).toLocaleDateString(undefined,
+    { day: 'numeric', month: 'short', year: 'numeric' });
+  // Calendar days, not 24-hour blocks. Something audited at six last night
+  // is not "today" to somebody reading this at nine in the morning, and the
+  // whole point of the line is deciding what is stale.
+  const then = new Date(at); then.setHours(0, 0, 0, 0);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const days = Math.round((today - then) / 86400000);
+  if (days <= 0) return `audited ${when}, today`;
+  if (days === 1) return `audited ${when}, yesterday`;
+  return `audited ${when}, ${days} days ago`;
+}
+
+async function showJobs() {
+  const projects = await api('/api/projects');
+  const list = $('#jobs-list');
+  // The same folder indexed twice under two names is the commonest reason one
+  // of these is stale, and the one thing a list of names cannot show.
+  const byRoot = {};
+  for (const p of projects) (byRoot[p.root] ||= []).push(p.name);
+  list.innerHTML = projects.length
+    ? projects.map(p => `<div class="job" data-id="${p.id}">
+        <span class="who">
+          <b>${esc(p.name)}</b>
+          <small>${whenAudited(p.scanned_at)} · ${plural(p.counts.total, 'finding')} ·
+                 ${plural(p.documents, 'document')}${
+                 p.typed_by_hand ? ` · ${plural(p.typed_by_hand, 'value')} typed by hand`
+                                 : ''}</small>
+          <small class="${p.folder_here ? '' : 'gone'}">${
+            p.folder_here ? esc(p.root) : esc(p.root) + '  (folder not found)'}</small>
+          ${byRoot[p.root].length > 1 ? `<small class="gone">same folder as ${
+            esc(byRoot[p.root].filter(n => n !== p.name).join(', '))}</small>` : ''}
+        </span>
+        <button onclick="askRename(${p.id})" title="Give this audit a different name">Rename</button>
+        <button class="danger" onclick="askRemove(${p.id})">Remove</button>
+      </div>`).join('')
+    : '<div class="job"><span class="who"><small>No audits stored.</small></span></div>';
+  $('#jobs').hidden = false;
+}
+
+// Two steps in the page rather than one native confirm(): the dialog a
+// WebView puts up cannot say how much is about to go, and the number of
+// hand-typed values is the part worth reading before agreeing.
+// Renaming is the only way a name changes now: the folder identifies an
+// audit, so re-running one no longer overwrites the name with the folder's.
+window.askRename = async (id) => {
+  const p = (await api('/api/projects')).find(x => x.id === id);
+  if (!p) return showJobs();
+  const row = $(`.job[data-id="${id}"]`);
+  const box = document.createElement('div');
+  box.className = 'confirm';
+  box.innerHTML = `<p>Name for the audit of <b>${esc(p.root)}</b>:</p>
+    <p><input type="text" id="rename-to" maxlength="120" value="${esc(p.name)}"></p>
+    <p class="why" hidden></p>
+    <div class="row">
+      <button data-act="cancel">Cancel</button>
+      <button class="primary" data-act="save">Save</button>
+    </div>`;
+  row.replaceWith(box);
+
+  const field = box.querySelector('#rename-to');
+  const why = box.querySelector('.why');
+  const save = async () => {
+    try {
+      const r = await api(`/api/projects/${id}/name`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ name: field.value })
+      });
+      await showJobs();
+      await loadProjects($('#project').value || undefined);
+      toast(`Renamed to ${r.name}`);
+    } catch (e) {
+      // Kept in the row rather than thrown at a toast: the box still holds
+      // what was typed, and the reason belongs next to it.
+      why.textContent = e.message;
+      why.hidden = false;
+      field.focus();
+    }
+  };
+  box.querySelector('[data-act=cancel]').onclick = () => showJobs();
+  box.querySelector('[data-act=save]').onclick = save;
+  field.onkeydown = e => {
+    if (e.key === 'Enter') save();
+    if (e.key === 'Escape') showJobs();
+  };
+  field.focus();
+  field.select();
+};
+
+window.askRemove = async (id) => {
+  const p = (await api('/api/projects')).find(x => x.id === id);
+  if (!p) return showJobs();
+  const row = $(`.job[data-id="${id}"]`);
+  const lost = p.typed_by_hand
+    ? `, including <b>${plural(p.typed_by_hand, 'value')} somebody typed by hand</b>
+       — ${p.typed_by_hand === 1 ? 'that cannot' : 'those cannot'} be recovered by
+       auditing again`
+    : '';
+  const box = document.createElement('div');
+  box.className = 'confirm';
+  box.innerHTML = `<p>Remove <b>${esc(p.name)}</b>? This deletes
+      ${plural(p.counts.total, 'finding')} and
+      ${plural(p.documents, 'indexed document')}${lost}.
+      The folder at ${esc(p.root)} is not touched.</p>
+    <div class="row">
+      <button data-act="cancel">Keep it</button>
+      <button class="danger" data-act="remove">Remove ${esc(p.name)}</button>
+    </div>`;
+  box.querySelector('[data-act=cancel]').onclick = () => showJobs();
+  box.querySelector('[data-act=remove]').onclick = () => removeJob(id);
+  row.replaceWith(box);
+};
+
+async function removeJob(id) {
+  const wasShowing = +$('#project').value === id;
+  const r = await api(`/api/projects/${id}`, { method: 'DELETE' });
+  await showJobs();
+  // Whatever was on screen belonged to the job that just went.
+  await loadProjects(wasShowing ? undefined : $('#project').value || undefined);
+  toast(`Removed ${r.name} — ${plural(r.findings, 'finding')}. `
+      + `${plural(r.cached_pages_kept, 'cached page reading')} kept.`);
+}
+
+// -- projects ---------------------------------------------------------------
+
+async function loadProjects(select) {
+  const projects = await api('/api/projects');
+  const sel = $('#project');
+  sel.innerHTML = projects.map(p =>
+    `<option value="${p.id}">${esc(p.name)} — ${plural(p.counts.total, 'finding')}</option>`
+    ).join('');
+  if (!projects.length) {
+    // Reachable now that audits can be removed. Leaving the previous job's
+    // findings on screen under an empty dropdown would be worse than a blank.
+    state.project = null; state.rows = [];
+    $('#cards').innerHTML = '';
+    $('#count').textContent = '';
+    document.querySelectorAll('main table').forEach(t => t.innerHTML = '');
+    $('#findings').innerHTML =
+      '<tr><td class="empty">No audits stored. Pick a folder and run one.</td></tr>';
+    return;
+  }
+  sel.value = select ?? projects[0].id;
+  await selectProject(+sel.value);
+}
+
+async function selectProject(id) {
+  state.project = id;
+  const projects = await api('/api/projects');
+  const p = projects.find(x => x.id === id);
+  if (p) {
+    $('#root').value = p.root;
+    $('#cards').innerHTML = ['critical','major','minor','info'].map(s =>
+      `<div class="card"><b class="${s}">${p.counts[s]}</b><small>${s}</small></div>`).join('')
+      + `<div class="card"><b>${p.counts.total}</b><small>total</small></div>`;
+  }
+  state.facets = await api('/api/facets?project_id=' + id);
+  fillFacet('#f-severity', state.facets.severity, 'All severities');
+  fillFacet('#f-rule', state.facets.rule, 'All rules',
+            v => `${v} · ${state.facets.rule_titles[v] || ''}`);
+  fillFacet('#f-segment', state.facets.segment, 'All segments');
+  await Promise.all([loadFindings(), loadSummary()]);
+}
+
+function fillFacet(sel, items, allLabel, label) {
+  const el = $(sel), keep = el.value;
+  el.innerHTML = `<option value="">${allLabel}</option>` + (items || []).map(i =>
+    `<option value="${esc(i.value)}">${esc(label ? label(i.value) : i.value)} (${i.n})</option>`).join('');
+  if ([...el.options].some(o => o.value === keep)) el.value = keep;
+}
+
+// -- findings ---------------------------------------------------------------
+
+async function loadFindings() {
+  if (!state.project) return;
+  const p = new URLSearchParams({ project_id: state.project });
+  for (const [k, sel] of [['severity','#f-severity'],['rule','#f-rule'],
+                          ['segment','#f-segment'],['status','#f-status'],['q','#f-q']]) {
+    if ($(sel).value) p.set(k, $(sel).value);
+  }
+  const { total, rows } = await api('/api/findings?' + p);
+  state.rows = rows;
+  $('#count').textContent = `${rows.length} of ${total}`;
+  const t = $('#findings');
+  if (!rows.length) {
+    t.innerHTML = `<tr><td class="empty">Nothing matches these filters.</td></tr>`;
+    return;
+  }
+  t.innerHTML = `<thead><tr>
+      <th>Sev</th><th>Rule</th><th>Segment</th><th>Subject</th>
+      <th>Finding</th><th>Detail</th><th>Source</th><th></th></tr></thead><tbody>`
+    + rows.map(r => `<tr class="${r.status !== 'open' ? 'done' : ''}">
+        <td class="sev ${r.severity}">${r.severity}${
+             r.status !== 'open' ? `<em>${esc(r.status)}</em>` : ''}</td>
+        <td class="rule" title="${esc(state.facets.rule_titles[r.rule] || '')}">${esc(r.rule)}</td>
+        <td>${esc(r.segment)}</td>
+        <td class="subject">${esc(r.subject)}</td>
+        <td class="msg">${esc(r.message)}</td>
+        <td class="detail">${esc(fmtDetail(r.detail))}</td>
+        <td>${r.document_id
+              ? `<a href="/api/document/${r.document_id}" target="_blank">${esc(r.filename || 'open')}</a>`
+              : ''}</td>
+        <td class="act">
+          ${r.status === 'open' ? `
+          <button onclick="mark(${r.id},'accepted')" title="Confirmed as a real exception">✓</button>
+          <button onclick="mark(${r.id},'dismissed')" title="Not an issue">✕</button>`
+          : `<button onclick="mark(${r.id},'open')"
+               title="Put this back on the list — undo the ${esc(r.status)} mark">↺</button>`}
+          ${r.document_id ? `<button onclick="correct(${r.document_id})"
+             title="Open the page, read the manufacturer, and enter it">✎</button>` : ''}
+        </td></tr>`).join('') + '</tbody>';
+}
+
+function fmtDetail(detail) {
+  if (!detail) return '';
+  try {
+    const d = JSON.parse(detail);
+    return Object.entries(d).map(([k, v]) => `${k}: ${v}`).join(' · ');
+  } catch { return detail; }
+}
+
+const MARKED = { accepted: 'Accepted', dismissed: 'Dismissed', open: 'Back on the list' };
+
+// Marking a finding usually removes it from view, because the status filter
+// starts on Open. So the confirmation carries the way back with it: the row
+// cannot be un-clicked once it is gone, and hunting for it means changing the
+// filter and knowing what to look for.
+window.mark = async (id, status, quiet) => {
+  const row = (state.rows || []).find(r => r.id === id);
+  const subject = row ? (row.rule + ' ' + (row.subject || '')).trim() : 'Finding';
+  // The server reports what it replaced. Trusting the browser's copy instead
+  // would undo to whatever this window last happened to render, which is not
+  // the same thing once a second window is open on the same job.
+  const { was } = await api(`/api/findings/${id}/status`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ status })
+  });
+  await loadFindings();
+  if (quiet) return;
+  toast(`${MARKED[status]} — ${subject}`,
+        was === status ? null
+        : { label: 'Undo', run: () => mark(id, was, true)
+              .then(() => toast(`${MARKED[was]} — ${subject}`)) });
+};
+
+// -- summaries --------------------------------------------------------------
+
+async function loadSummary() {
+  const s = await api('/api/summary?project_id=' + state.project);
+
+  $('#coverage').innerHTML = `<thead><tr>
+      <th>Segment</th><th>Register</th><th>Welds</th><th>Welds citing NDE</th>
+      <th>Shots on file</th><th>% referenced</th></tr></thead><tbody>`
+    + (s.coverage.length ? s.coverage.map(c => `<tr>
+        <td>${esc(c.segment)}</td>
+        <td>${c.multiple_registers
+              ? `<span title="Two registers describe this segment, so the weld count is a deduplicated estimate — see REG-03.">all registers (deduplicated)</span>`
+              : esc((c.registers[0] || {}).register || '')}</td>
+        <td>${c.welds}</td><td>${c.welds_with_nde}</td>
+        <td>${c.sheets_on_file}</td>
+        <td><div class="bar" title="${c.pct_referenced}%"><i style="width:${c.pct_referenced}%"></i></div></td>
+      </tr>` + (c.multiple_registers ? c.registers.map(r => `<tr class="sub">
+        <td></td><td>${esc(r.register)}</td><td>${r.welds}</td>
+        <td>${r.welds_with_nde}</td><td></td><td></td></tr>`).join('') : '')).join('')
+      : `<tr><td class="empty">No weld register extracted for this project.</td></tr>`) + '</tbody>';
+
+  const psi = (v) => v === null ? '' : v;
+  // Required against actual, side by side: that comparison is the audit.
+  $('#pressure').innerHTML = `<thead><tr>
+      <th>Segment</th><th>Service</th><th>Started</th>
+      <th>Required</th><th>Held</th><th>Hours</th><th>Result</th>
+      <th>Readings</th><th>Document</th></tr></thead><tbody>`
+    + (s.pressure_tests.length ? s.pressure_tests.map(t => `<tr>
+        <td>${esc(t.segment)}</td><td>${esc(t.service)}</td>
+        <td>${esc(t.started)}</td>
+        <td>${psi(t.required_min)}${t.required_max !== null ? '–' + t.required_max : ''} psig</td>
+        <td>${t.held_low !== null
+              ? `<span title="Lowest and highest reading during the hold, excluding the pressurisation ramp.">${t.held_low}–${t.held_high}</span>`
+              : '—'}</td>
+        <td${t.required_hours !== null && t.actual_hours !== null
+              && t.actual_hours < t.required_hours ? ' class="miss"' : ''}>${
+              psi(t.actual_hours)}${t.required_hours !== null ? ' / ' + t.required_hours : ''}</td>
+        <td${t.result === 'ACCEPTABLE' ? '' : ' class="miss"'}>${esc(t.result) || '—'}</td>
+        <td>${t.readings}</td>
+        <td>${esc(t.filename)}</td>
+      </tr>`).join('')
+      : `<tr><td class="empty">No pressure test has been read for this project. Run <code>weldaudit vision --kind hydrotest</code>.</td></tr>`) + '</tbody>';
+
+  // What was recorded, then what was not — the blanks are the story on these.
+  $('#coating').innerHTML = `<thead><tr>
+      <th>Segment</th><th>Date</th><th>Product</th><th>Profile</th>
+      <th>DFT</th><th>Dew pt margin</th><th>Jeeped</th><th>Welds</th>
+      <th>Not recorded</th></tr></thead><tbody>`
+    + (s.coating.length ? s.coating.map(t => `<tr>
+        <td>${esc(t.segment)}</td><td>${esc(t.report_date)}</td>
+        <td>${esc(t.products) || '—'}</td>
+        <td${t.profile_required !== null && t.profile_low !== null
+              && t.profile_low < t.profile_required ? ' class="miss"' : ''}>${
+              t.profile_low !== null ? t.profile_low : '—'}${
+              t.profile_required !== null ? ' / ' + t.profile_required : ''}</td>
+        <td>${t.dft_low !== null ? t.dft_low + ' mils' : '—'}</td>
+        <td${t.dew_point_margin !== null && t.dew_point_margin < 5 ? ' class="miss"' : ''}>${
+              t.dew_point_margin !== null ? t.dew_point_margin.toFixed(1) + '°F' : '—'}</td>
+        <td${t.jeeped ? '' : ' class="miss"'}>${t.jeeped ? 'yes' : 'NO'}</td>
+        <td${t.welds_named ? '' : ' style="color:var(--muted)"'} title="${
+              t.welds_named ? 'Joints this report ties itself to'
+              : 'This revision of the form has no NDE Weld # column'}">${
+              t.welds_named || '—'}</td>
+        <td class="miss">${esc(t.missing.join(', ')) || ''}</td>
+      </tr>`).join('')
+      : `<tr><td class="empty">No coating report has been read for this project. Run <code>weldaudit vision --kind coating</code>.</td></tr>`) + '</tbody>';
+
+  // A bolted joint has no NDE and no pressure record, so the log's own
+  // sign-off columns are the whole of its evidence — hence the three at the end.
+  $('#flanges').innerHTML = `<thead><tr>
+      <th>Segment</th><th>Log</th><th>Joints</th><th>Sizes</th>
+      <th>No wrench</th><th>Cal not verified</th><th>No sign-off</th>
+      </tr></thead><tbody>`
+    + (s.flanges.length ? s.flanges.map(t => `<tr>
+        <td>${esc(t.segment)}</td>
+        <td>${esc(t.log)}${t.sheet && t.sheet !== 'Flange Log'
+              ? ` <span style="color:var(--muted)">(${esc(t.sheet)})</span>` : ''}</td>
+        <td>${t.torqued}</td><td>${esc(t.sizes)}</td>
+        <td${t.no_wrench ? ' class="miss"' : ''}>${t.no_wrench || '—'}</td>
+        <td${t.not_verified ? ' class="miss"' : ''}>${t.not_verified || '—'}</td>
+        <td${t.no_signoff ? ' class="miss"' : ''}>${t.no_signoff || '—'}</td>
+      </tr>`).join('')
+      : `<tr><td class="empty">No flange log found for this project.</td></tr>`) + '</tbody>';
+
+  // "Filed" is the column that matters: welds against a procedure with no
+  // specification in the package is a line handed over with no recipe.
+  $('#procedures').innerHTML = `<thead><tr>
+      <th>WPS</th><th>Rev</th><th>Filed</th><th>Supporting PQR</th>
+      <th>Welds</th><th>Certs</th><th>Written as</th></tr></thead><tbody>`
+    + (s.procedures.length ? s.procedures.map(t => `<tr>
+        <td>${esc(t.wps)}</td><td>${esc(t.revision) || '—'}</td>
+        <td${t.filed ? '' : ' class="miss"'}>${t.filed ? 'yes' : 'NO'}</td>
+        <td${t.filed && !t.pqr ? ' class="miss"' : ''}>${esc(t.pqr) || '—'}</td>
+        <td>${t.welds || '—'}</td><td>${t.certs || '—'}</td>
+        <td>${esc(t.spellings)}</td>
+      </tr>`).join('')
+      : `<tr><td class="empty">No welding procedure is referenced or filed for this project.</td></tr>`) + '</tbody>';
+
+  // The name column is the point: everywhere else a welder is three letters.
+  $('#welders').innerHTML = `<thead><tr>
+      <th>Stencil</th><th>Name</th><th>Cert</th><th>Requal due</th>
+      <th>On job</th><th>Passes</th><th>Welded</th></tr></thead><tbody>`
+    + (s.welders.length ? s.welders.map(t => `<tr>
+        <td>${esc(t.stencil)}</td><td>${esc(t.name)}</td>
+        <td${t.certificate ? '' : ' class="miss"'}>${t.certificate ? 'yes' : 'NO'}</td>
+        <td${t.next_requal && t.last_weld && t.last_weld > t.next_requal
+              ? ' class="miss"' : ''}>${esc(t.next_requal) || '—'}</td>
+        <td>${esc(t.arrived) || '—'} → ${esc(t.left_job) || 'still on'}</td>
+        <td>${t.passes || '—'}</td>
+        <td>${t.first_weld ? esc(t.first_weld) + ' → ' + esc(t.last_weld) : '—'}</td>
+      </tr>`).join('')
+      : `<tr><td class="empty">No project welder log found for this project.</td></tr>`) + '</tbody>';
+
+  // The three dates sit together because the gap between them is the finding.
+  $('#backfill').innerHTML = `<thead><tr>
+      <th>Segment</th><th>Page</th><th>Covers</th><th>Released</th>
+      <th>Inspector</th><th>Contractor</th><th>Survey</th><th>Signed by</th>
+      </tr></thead><tbody>`
+    + (s.backfill.length ? s.backfill.map(t => `<tr>
+        <td>${esc(t.segment)}</td><td>${t.page_no}</td>
+        <td${t.from_station && t.to_station ? '' : ' class="miss"'}>${
+              t.from_station && t.to_station
+                ? esc(t.from_station) + ' → ' + esc(t.to_station) : 'not stated'}</td>
+        <td>${esc(t.released_on) || '—'}</td>
+        <td>${esc(t.inspector_date) || '—'}</td>
+        <td${t.contractor_date && t.inspector_date
+              && t.contractor_date !== t.inspector_date ? ' class="miss"' : ''}>${
+              esc(t.contractor_date) || '—'}</td>
+        <td>${esc(t.survey_date) || '—'}</td>
+        <td>${esc(t.signed_by) || '—'}</td>
+      </tr>`).join('')
+      : `<tr><td class="empty">No release for backfill has been read for this project. Run <code>weldaudit vision --kind backfill</code>.</td></tr>`) + '</tbody>';
+
+  // The station span is what nothing else in the audit can supply.
+  $('#asbuilt').innerHTML = `<thead><tr>
+      <th>Segment</th><th>Sheet</th><th>Service</th><th>Covers</th>
+      <th>Length</th><th>Joints</th><th>With heat</th><th>With NDE</th>
+      </tr></thead><tbody>`
+    + (s.asbuilt.length ? s.asbuilt.map(t => `<tr>
+        <td>${esc(t.segment)}</td>
+        <td>${esc(t.sheet)}<br><span style="color:var(--muted);font-size:12px">${esc(t.document)}</span></td>
+        <td>${esc(t.service) || '—'}</td>
+        <td${t.from_station ? '' : ' class="miss"'}>${
+              t.from_station ? esc(t.from_station) + ' → ' + esc(t.to_station)
+                             : 'no stations'}</td>
+        <td>${t.length ? t.length.toLocaleString() + ' ft' : '—'}</td>
+        <td>${t.joints}</td>
+        <td${t.with_heat < t.joints ? ' class="miss"' : ''}>${t.with_heat}</td>
+        <td${t.with_nde < t.joints ? ' class="miss"' : ''}>${t.with_nde}</td>
+      </tr>`).join('')
+      : `<tr><td class="empty">No as-built sheet found for this project.</td></tr>`) + '</tbody>';
+
+  $('#completeness').innerHTML = `<thead><tr>
+      <th>Segment</th><th>Files</th><th>% complete</th>
+      <th>Missing required sections</th></tr></thead><tbody>`
+    + s.completeness.map(c => `<tr>
+        <td>${esc(c.segment)}</td><td>${c.total_files}</td>
+        <td><div class="bar" title="${c.pct_complete}%"><i style="width:${c.pct_complete}%"></i></div></td>
+        <td class="miss">${esc(c.missing_required.join(', ')) || '—'}</td>
+      </tr>`).join('') + '</tbody>';
+}
+
+// -- audit run --------------------------------------------------------------
+
+$('#go').onclick = async () => {
+  const root = $('#root').value.trim();
+  if (!root) return toast('Enter a folder to audit.');
+  $('#go').disabled = true;
+  try {
+    await api('/api/audit', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ root })
+    });
+    poll();
+  } catch (e) { toast(e.message); $('#go').disabled = false; }
+};
+
+// Reading the scans is not part of an audit — it is slow, seconds a page —
+// but leaving it on the command line meant it never got run. A job audited on
+// a machine that had not read its scans came back with 2 manufacturers named
+// out of 495 instead of 28 of 37, and so with no approved-manufacturer
+// findings at all: a shorter report that looks like a cleaner package.
+$('#ocr').onclick = async () => {
+  if (!state.project) return toast('Audit a job first');
+  $('#ocr').disabled = true;
+  $('#go').disabled = true;
+  try {
+    await api('/api/ocr', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ project_id: +state.project })
+    });
+    poll();
+  } catch (e) {
+    toast(e.message);
+    $('#ocr').disabled = false;
+    $('#go').disabled = false;
+  }
+};
+
+async function poll() {
+  const s = await api('/api/status');
+  $('#progress').textContent = s.running ? `${s.stage}: ${s.message}` : '';
+  if (s.running) return setTimeout(poll, 400);
+  $('#go').disabled = false;
+  $('#ocr').disabled = false;
+  if (s.error) { toast('That did not finish — see console'); console.error(s.error); return; }
+  $('#progress').textContent = s.message || '';
+  await loadProjects(s.project_id);
+  toast('Finished: ' + (s.message || ''));
+}
+
+// A WebView2 window has no downloads folder and no download bar, so pointing
+// it at an attachment URL does nothing whatever — no file, no error, no
+// dialog. Inside the window the report is fetched and saved through a real
+// Save As box; in a browser tab, the ordinary navigation still works.
+$('#export').onclick = async () => {
+  if (!state.project) return toast('Audit a job first');
+  const url = '/api/export?project_id=' + state.project +
+              '&fmt=' + $('#fmt').value + '&to=download';
+  const bridge = window.pywebview && window.pywebview.api;
+  if (!bridge || !bridge.save_report) {
+    location.href = url;
+    return;
+  }
+  const button = $('#export');
+  button.disabled = true;
+  try {
+    const saved = await bridge.save_report(location.origin + url);
+    toast(saved ? 'Saved to ' + saved : 'Nothing saved.');
+  } catch (e) {
+    toast('Could not save the report: ' + (e.message || e));
+  } finally {
+    button.disabled = false;
+  }
+};
+
+// Writing the report next to the package it describes is what an auditor
+// wants; the browser's Downloads folder is a detour on the way there.
+$('#save').onclick = async () => {
+  if (!state.project) return toast('Audit a job first');
+  const r = await api('/api/export?project_id=' + state.project +
+                      '&fmt=' + $('#fmt').value + '&to=job');
+  toast(r.fell_back ? ('Saved to ' + r.path + ' — ' + r.reason)
+                    : ('Saved to ' + r.path));
+};
+
+// -- what the auditor read off the page ------------------------------------
+// Some letterheads are logotypes that no reader resolves — Tex-Tubo came back
+// as TECKCUBO, TEKSUMEO and Tekube on different pages of the same vendor. The
+// findings say "read the letterhead and enter the company", so this is where
+// it gets entered. It outranks every automated reader and survives re-audits.
+async function correct(documentId) {
+  const value = prompt(
+    'Manufacturer, as printed on the certificate.\n\n' +
+    'This overrides every automated reading of this document and is kept ' +
+    'when the job is audited again. Leave blank to withdraw a correction.');
+  if (value === null) return;
+  const r = await api('/api/correct', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      project_id: state.project, document_id: documentId,
+      field: 'manufacturer', value: value.trim() || null,
+      note: 'entered from the findings list',
+    }),
+  });
+  toast(value.trim()
+        ? `Set to "${value.trim()}" on ${r.filename} — re-run the audit to update findings`
+        : `Correction withdrawn on ${r.filename}`);
+}
+
+// -- folder picker ---------------------------------------------------------
+// A browser will not hand a page a real folder path, so the server lists the
+// folders and this walks that listing.
+let pickAt = '';
+
+async function pickShow(path) {
+  const r = await api('/api/browse?path=' + encodeURIComponent(path || ''));
+  pickAt = r.path;
+  $('#pick-path').textContent = r.path || 'This computer';
+  const list = $('#pick-list');
+  list.innerHTML = '';
+  if (r.up) {
+    const up = document.createElement('div');
+    up.textContent = '⮏ up to ' + r.up;
+    up.onclick = () => pickShow(r.up);
+    list.appendChild(up);
+  }
+  for (const f of r.folders) {
+    const row = document.createElement('div');
+    row.textContent = '📁 ' + f.name;
+    row.onclick = () => pickShow(f.path);
+    list.appendChild(row);
+  }
+  if (!r.folders.length) {
+    const empty = document.createElement('div');
+    empty.textContent = 'No sub-folders here. "Use this folder" audits it.';
+    list.appendChild(empty);
+  }
+  $('#picker').hidden = false;
+}
+
+// Running in the WeldAudit window there is a real Windows folder dialog, and
+// that is what someone pressing "Browse" expects — their own drives, their
+// network shares, the places they have been recently. The list below is the
+// fallback for when this page is open in a browser instead, where no page is
+// allowed to open one.
+$('#browse').onclick = async () => {
+  const native = window.pywebview && window.pywebview.api
+                 && window.pywebview.api.pick_folder;
+  if (native) {
+    try {
+      const chosen = await window.pywebview.api.pick_folder($('#root').value.trim());
+      if (chosen) $('#root').value = chosen;
+      return;
+    } catch (err) {
+      toast('Could not open the Windows folder dialog; using the list instead.');
+    }
+  }
+  pickShow($('#root').value.trim());
+};
+$('#pick-cancel').onclick = () => { $('#picker').hidden = true; };
+$('#pick-use').onclick = () => {
+  if (pickAt) $('#root').value = pickAt;
+  $('#picker').hidden = true;
+};
+$('#picker').onclick = e => { if (e.target.id === 'picker') $('#picker').hidden = true; };
+
+$('#manage').onclick = () => showJobs().catch(e => toast(e.message));
+$('#jobs-close').onclick = () => { $('#jobs').hidden = true; };
+$('#jobs').onclick = e => { if (e.target.id === 'jobs') $('#jobs').hidden = true; };
+
+$('#project').onchange = e => selectProject(+e.target.value);
+for (const sel of ['#f-severity','#f-rule','#f-segment','#f-status']) {
+  $(sel).onchange = loadFindings;
+}
+let qt; $('#f-q').oninput = () => { clearTimeout(qt); qt = setTimeout(loadFindings, 250); };
+
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
+  for (const t of ['findings','coverage','pressure','coating','flanges','procedures','welders','backfill','asbuilt','completeness']) {
+    $('#tab-' + t).hidden = (t !== b.dataset.tab);
+  }
+});
+
+loadProjects().catch(e => toast(e.message));
+
+// -- opening the program means starting a job ------------------------------
+// The dialog comes up on launch rather than waiting behind a Browse button,
+// because auditing a new package is what opening this is for. Cancelling it
+// is the way in to the old findings: the previous jobs are still in the
+// dropdown, so cancel is a real choice rather than a dead end.
+let askedForAJob = false;
+
+async function askForAJob() {
+  if (askedForAJob) return;
+  askedForAJob = true;
+  const api_ = window.pywebview && window.pywebview.api;
+  if (!api_ || !api_.pick_folder) return;      // a browser tab; leave it alone
+  let chosen = '';
+  try {
+    chosen = await api_.pick_folder('');
+  } catch (err) {
+    return;                                    // no dialog available; not fatal
+  }
+  if (!chosen) {
+    toast('No folder chosen. Pick a previous job above, or press Browse.');
+    return;
+  }
+  $('#root').value = chosen;
+  $('#go').onclick();
+}
+
+// The readings are the expensive part and they do not travel with the exe:
+// they live in each user's own profile. A colleague handed the program and
+// pointed at the same folder therefore reads nothing off the scanned
+// certificates, and their report comes back missing every
+// approved-manufacturer finding — three of them critical on one real line.
+// Shorter, and blinder, with nothing on screen to say so.
+//
+// The transfer file existed before this did. It was reachable only from a
+// command line, on machines where nobody opens one, so it never got used.
+// Asking here is the difference between a feature and a fixed problem.
+async function offerTheReadings() {
+  let r;
+  try { r = await api('/api/readings'); } catch { return; }
+  if (r.cached || !r.offer) return;          // already has some, or none to offer
+  const bar = $('#notice');
+  $('#notice-text').innerHTML =
+    `This machine has read no certificate pages yet, so the manufacturer on a `
+    + `scanned certificate cannot be checked against the AML — those findings `
+    + `will be missing from every report until it has. `
+    + `<b>${r.offered.toLocaleString()} readings</b> are available in `
+    + `${esc(r.offer)}.`;
+  const go = $('#notice-do');
+  go.textContent = 'Load them';
+  go.onclick = async () => {
+    go.disabled = true;
+    try {
+      const got = await api('/api/readings/import', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ path: r.offer })
+      });
+      bar.hidden = true;
+      toast(`${got.added.toLocaleString()} readings loaded. Run the audit `
+          + `again to fold them in.`);
+    } catch (e) {
+      toast('Could not load them: ' + e.message);
+      go.disabled = false;
+    }
+  };
+  $('#notice-hide').onclick = () => { bar.hidden = true; };
+  bar.hidden = false;
+}
+offerTheReadings();
+
+// pywebview injects its bridge after the page loads and announces it here.
+window.addEventListener('pywebviewready', askForAJob);
+// If the bridge was already in place before this script ran, the event has
+// been and gone, so check directly too.
+if (window.pywebview && window.pywebview.api) askForAJob();
+</script>
+</body>
+</html>

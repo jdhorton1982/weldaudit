@@ -1,0 +1,42 @@
+# Build output
+build/
+dist/
+*.spec.bak
+__pycache__/
+*.pyc
+
+# Anything carrying a customer's data.
+#
+# The program is generic; the documents it reads are not. An approved
+# manufacturer list is issued to a company under confidentiality, a page
+# reading is the content of that company's certificates, and a database is
+# every finding about their pipeline. None of it belongs in a public history,
+# and a history is not something you can take back.
+private/
+*.wacache
+*.db
+*.db-wal
+*.db-shm
+AML*.xlsx
+AML*.xlsm
+*Approved Material*.xlsx
+*AML*.pdf
+*Piping AML*
+*exceptions.xlsx
+*.csv
+
+# Local scratch
+.venv/
+venv/
+.idea/
+.vscode/
+
+# Secrets. A public repository is scraped for these within minutes of a push,
+# and a database password committed once is a password that must be rotated.
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+supabase/.temp/
+supabase/.branches/
