@@ -274,6 +274,32 @@ def _trim_heat(token: str) -> str:
     return kept if len(kept) >= 3 else ""
 
 
+def same_heat_differently_read(a: str, b: str) -> bool:
+    """Are these two the same heat, one of them misread?
+
+    A scanned heat comes back a character out often enough that an exact
+    comparison is not a comparison of heats — it is a comparison of how well
+    the page scanned. `867985` against `367985` is one certificate, read twice.
+
+    The same tolerance the audit already uses when it asks whether an
+    uncertified heat is really a transcription error: same length, one
+    character apart, and long enough that a single character is not most of
+    the string. Anything looser starts joining genuinely different heats from
+    the same rolling, which is the mistake that hides missing paperwork.
+    """
+    left, right = normalise_heat(a), normalise_heat(b)
+    if not left or not right:
+        return False
+    if left == right:
+        return True
+    if len(left) != len(right) or len(left) < 5:
+        return False
+
+    from rapidfuzz.distance import Levenshtein
+
+    return Levenshtein.distance(left, right, score_cutoff=2) == 1
+
+
 def normalise_heat(heat: str) -> str:
     """Canonical form for joining heats across sources.
 

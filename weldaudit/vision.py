@@ -195,7 +195,8 @@ MTR_SCHEMA: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
     "required": ["page_is_certificate", "heat", "issuing_company", "customer",
-                 "mill_name", "mill_source", "mill_location", "country_of_melt",
+                 "mill_name", "mill_source", "mill_heat", "mill_location",
+                 "country_of_melt",
                  "country_of_manufacture", "specification", "grade", "size",
                  "wall_thickness", "description"],
     "properties": {
@@ -232,6 +233,16 @@ MTR_SCHEMA: dict[str, Any] = {
                            "A company name, never a place - a town or state "
                            "belongs in mill_location. Null if the document "
                            "does not say.",
+        },
+        "mill_heat": {
+            "type": ["string", "null"],
+            "description": "If the line naming mill_name also states a heat, "
+                           "cast or certificate number OF ITS OWN, report it "
+                           "exactly as printed. Null if that line states no "
+                           "number, or states this certificate's own heat. "
+                           "This is how a melt origin gives itself away: the "
+                           "steel it names arrived under a different heat "
+                           "than the item this certificate covers.",
         },
         "mill_source": {
             "enum": ["letterhead", "works_line", "supplier_line", None],
@@ -474,6 +485,13 @@ Starting Material or Mill Test Report line. Answer for where the text
 physically sits on the page, not for who you believe made the item. That
 judgement is made downstream and it needs the evidence, not the conclusion.
 If mill_name is null, leave mill_source null too.
+
+A MILL/COUNTRY OF ORIGIN line is the commonest trap on a fitting or flange
+certificate. It names where the STEEL was melted, and it usually carries that
+steel's own heat number — different from the heat this certificate covers. The
+company that forged the item is the one on the letterhead; the melt source is
+upstream of it. Where such a line states its own heat, put that number in
+mill_heat, and it will be treated as a supply line however it is labelled.
 
 **A supplier of the raw material is not the producer of the product.** A pipe
 mill's certificate often names the steelmaker whose coil it rolled — fields

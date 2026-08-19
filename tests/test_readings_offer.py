@@ -39,6 +39,20 @@ def a_cache(tmp_path):
     return out
 
 
+@pytest.fixture(autouse=True)
+def only_look_here(tmp_path, monkeypatch):
+    """Confine the search to this test's own directory.
+
+    The real search walks the Desktop, Downloads and every drive's WeldAudit
+    folder, which is what makes it useful and what makes it untestable: with a
+    USB stick plugged in, six of these tests failed because the program
+    correctly found the readings on it.
+    """
+    import weldaudit.api as api
+
+    monkeypatch.setattr(api, "_cache_places", lambda: [Path.cwd()])
+
+
 @pytest.fixture
 def fresh(tmp_path, a_cache, monkeypatch):
     """A machine that has never read a page, with the file sitting beside it."""

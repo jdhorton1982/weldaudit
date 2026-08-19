@@ -192,6 +192,9 @@ def payload_for(path, aml: Aml | None, page_no: int = 0) -> dict | None:
         # outranks the letterhead is that somebody read a label to say so.
         "mill_name": None,
         "mill_source": None,
+        # OCR reads no labels, so it can no more find the heat on a melt line
+        # than it can tell that line from a works line.
+        "mill_heat": None,
         "mill_location": None,
         "country_of_melt": None,
         "country_of_manufacture": None,

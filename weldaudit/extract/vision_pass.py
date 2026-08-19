@@ -29,7 +29,7 @@ from pathlib import Path
 from ..aml import parse_nps
 from ..db import Database
 from ..ids import parse_ids, parse_one
-from ..mtrname import normalise_heat
+from ..mtrname import normalise_heat, same_heat_differently_read
 from ..readersheet import is_precision_group
 from ..vision import (
     Estimate, VisionReader, _same_company, is_decisive, page_count,
@@ -1113,6 +1113,25 @@ def _apply_mtr(db: Database, project_id: int, target: Target,
     # pass, and Valvitalia's elbows still came back made by Tubos Reunidos,
     # who supplied the pipe they were forged from. That name is a real company
     # the AML approves, so the substitution passes as a clean result.
+    # A melt line states the heat of the steel it supplied, and that heat is
+    # not this certificate's. Ryeburn International certified a flexolet under heat
+    # 8410BB and named NORTHFIELD STAINLESS on its MILL/COUNTRY OF ORIGIN
+    # line under heat CN1G; the model called that a works_line — twice, on two
+    # separate readings — and the fitting was credited to the steel supplier,
+    # who is not on the approved list, while Ryeburn, who is, was discarded.
+    #
+    # No label survives this test. A works line describes the item in hand and
+    # so carries the item's heat or none at all; only a supply line brings its
+    # own.
+    # Compared with the tolerance a scanned number deserves. A works line
+    # stating this certificate's own heat, misread by one character, is not a
+    # supply line: `867985` against `367985` is one heat read twice, and
+    # treating it as two would throw away a producer the page does name.
+    mill_heat = _clean(payload.get("mill_heat"))
+    own_heat = _clean(payload.get("heat"))
+    if mill and mill_heat and own_heat             and not same_heat_differently_read(mill_heat, own_heat):
+        mill = None
+
     source = _clean(payload.get("mill_source"))
     if source == "supplier_line":
         mill = None
