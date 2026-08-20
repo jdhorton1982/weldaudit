@@ -40,3 +40,15 @@ venv/
 *.pem
 supabase/.temp/
 supabase/.branches/
+
+# Notes and documents dropped in the working folder. One of these held a
+# database password and reached a public commit, because a binary carries its
+# contents past a scan that reads the text diff.
+*.docx
+*.doc
+*.xlsx
+*.xls
+*.rtf
+*.txt
+!requirements.txt
+!README.txt

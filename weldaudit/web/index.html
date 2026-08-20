@@ -134,6 +134,76 @@
   .sev em { display: block; font-style: normal; font-weight: 600; font-size: 10px;
             letter-spacing: 0; color: var(--muted); margin-top: 2px; }
   .miss { color: var(--major); font-size: 12px; }
+
+  /* ---- the mark, animated ------------------------------------------------
+     It pops out of the corner, runs a bead round the pipe, then strikes the
+     tick. Sized so it reads at a glance and ignores easily: this is a tool
+     people use on safety records, and the way a helper like this fails is by
+     interrupting. It never covers the table, never takes focus, and one click
+     stops it for good. */
+  #buddy { position: fixed; right: 18px; bottom: 18px; z-index: 40;
+           display: flex; align-items: flex-end; gap: 10px;
+           animation: buddy-in .5s cubic-bezier(.2,1.5,.4,1) both; }
+  #buddy[hidden] { display: none; }
+  @keyframes buddy-in {
+    from { transform: translateY(28px) scale(.7); opacity: 0; }
+    to   { transform: none; opacity: 1; }
+  }
+  #buddy.going { animation: buddy-out .28s ease-in forwards; }
+  @keyframes buddy-out {
+    to { transform: translateY(20px) scale(.85); opacity: 0; }
+  }
+
+  #buddy-mark { width: 62px; height: 62px; flex: none; cursor: pointer;
+                filter: drop-shadow(0 3px 8px rgba(0,0,0,.28)); }
+  #buddy-mark .b-ring { stroke: var(--accent); }
+  #buddy-mark .b-bead { stroke: var(--panel); opacity: .55; }
+  #buddy-mark .b-halo { stroke: var(--panel); }
+  #buddy-mark .b-tick { stroke: var(--ok); }
+
+  /* The ring draws itself, the bead sparks along it, the tick lands last. */
+  #buddy-mark .b-ring { stroke-dasharray: 126; stroke-dashoffset: 126;
+                        animation: draw-ring .7s ease-out .1s forwards; }
+  @keyframes draw-ring { to { stroke-dashoffset: 0; } }
+  #buddy-mark .b-bead path { opacity: 0; animation: spark .5s ease-out forwards; }
+  @keyframes spark { 0% { opacity: 0; } 40% { opacity: 1; } 100% { opacity: .55; } }
+  #buddy-mark .b-tick, #buddy-mark .b-halo {
+    stroke-dasharray: 34; stroke-dashoffset: 34;
+    animation: draw-tick .32s cubic-bezier(.3,1.4,.5,1) .95s forwards; }
+  @keyframes draw-tick { to { stroke-dashoffset: 0; } }
+  /* A small nudge on hover, so it reads as clickable. */
+  #buddy-mark:hover { transform: translateY(-3px) rotate(-6deg);
+                      transition: transform .18s ease-out; }
+
+  #buddy { opacity: .93; transition: opacity .2s; }
+  #buddy:hover { opacity: 1; }
+  #buddy-bubble { position: relative; max-width: 320px;
+                  background: var(--panel); color: var(--ink);
+                  border: 1px solid var(--line); border-radius: 12px;
+                  padding: 12px 30px 10px 14px; font-size: 13px; line-height: 1.45;
+                  box-shadow: 0 8px 26px rgba(0,0,0,.22); }
+  #buddy-bubble:after { content: ""; position: absolute; right: -7px; bottom: 18px;
+                        width: 12px; height: 12px; background: var(--panel);
+                        border-right: 1px solid var(--line);
+                        border-bottom: 1px solid var(--line);
+                        transform: rotate(-45deg); }
+  #buddy-says { margin: 0 0 8px; }
+  #buddy-close { position: absolute; top: 4px; right: 6px; border: none;
+                 background: none; color: var(--muted); font-size: 17px;
+                 line-height: 1; padding: 2px 5px; cursor: pointer; }
+  #buddy-acts { display: flex; gap: 6px; flex-wrap: wrap; }
+  #buddy-acts button { padding: 3px 10px; font-size: 12px; }
+  #buddy-mute { display: block; margin-top: 8px; color: var(--muted);
+                font-size: 11px; cursor: pointer; }
+  #buddy-mute input { margin-right: 4px; vertical-align: -1px; }
+
+  /* Somebody who has asked their system not to animate gets it still. */
+  @media (prefers-reduced-motion: reduce) {
+    #buddy, #buddy-mark * { animation: none !important; }
+    #buddy-mark .b-ring, #buddy-mark .b-tick, #buddy-mark .b-halo {
+      stroke-dashoffset: 0; }
+    #buddy-mark .b-bead path { opacity: .55; }
+  }
   /* A toast was the wrong shape for this. It says the one thing a fresh
      machine must act on before its reports mean anything, and it said it for
      nine seconds — twice somebody audited a whole job without seeing it.
@@ -315,6 +385,33 @@
 </main>
 
 <div id="toast"></div>
+
+<!-- The mark, animated, asking something. Bottom-right, above the table and
+     below every dialog, so it can always be ignored. -->
+<div id="buddy" hidden aria-live="polite">
+  <div id="buddy-bubble">
+    <button id="buddy-close" title="Not now">&times;</button>
+    <p id="buddy-says"></p>
+    <div id="buddy-acts"></div>
+    <label id="buddy-mute"><input type="checkbox"> stop popping up</label>
+  </div>
+  <svg id="buddy-mark" viewBox="0 0 64 64" role="img" aria-label="WeldAudit">
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <circle class="b-ring" cx="32" cy="32" r="20" stroke-width="8.5"/>
+      <g class="b-bead" stroke-width="1.4">
+        <path d="M30.1 13.8 L29.7 10.5"/><path d="M26.6 14.5 L25.7 11.3"/>
+        <path d="M23.4 15.8 L21.8 12.9"/><path d="M20.5 17.7 L18.4 15.2"/>
+        <path d="M17.9 20.2 L15.4 18.1"/><path d="M16.0 23.1 L13.1 21.5"/>
+        <path d="M14.5 26.3 L11.4 25.3"/><path d="M13.8 29.8 L10.5 29.4"/>
+        <path d="M13.7 33.3 L10.4 33.5"/><path d="M14.3 36.7 L11.1 37.6"/>
+        <path d="M15.5 40.0 L12.5 41.5"/><path d="M17.3 43.0 L14.7 45.0"/>
+        <path d="M19.7 45.6 L17.5 48.1"/>
+      </g>
+      <path class="b-halo" d="M24 33.5 l6.5 6.5 l14.5 -16" stroke-width="11.5"/>
+      <path class="b-tick" d="M24 33.5 l6.5 6.5 l14.5 -16" stroke-width="6"/>
+    </g>
+  </svg>
+</div>
 
 <script>
 const $ = s => document.querySelector(s);
@@ -1098,6 +1195,205 @@ async function offerTheReadings() {
   bar.hidden = false;
 }
 offerTheReadings();
+
+// ---------------------------------------------------------------------------
+// The mark, asking something
+// ---------------------------------------------------------------------------
+//
+// A helper that pops out of the corner fails in exactly one way, and everyone
+// has met it: it interrupts. So this one is built to be easy to ignore and
+// easy to stop — it never takes focus, never covers the table, waits until
+// nothing is running, and one tick turns it off for good.
+//
+// It also tries to earn the interruption. Most of what it asks is drawn from
+// the audit actually on screen and does something when answered; the rest is
+// there because a day spent reading turnover packages is long.
+
+const BUDDY_OFF = 'weldaudit.buddy.off';
+
+//: Asked once each per session at most, so it does not repeat itself.
+let buddyAsked = new Set();
+
+function critCount() {
+  return (state.rows || []).filter(r => r.severity === 'critical'
+                                     && r.status === 'open').length;
+}
+function uncommented() {
+  return (state.rows || []).filter(r => !r.note && r.status === 'open').length;
+}
+
+// `when` decides whether a question applies; `acts` are the buttons. A
+// question with no acts is just something to read.
+const BUDDY_ASKS = [
+  {
+    id: 'crits',
+    when: () => critCount() > 0,
+    say: () => `There ${critCount() === 1 ? 'is' : 'are'} <b>${critCount()}</b> `
+             + `critical ${critCount() === 1 ? 'finding' : 'findings'} still open. `
+             + `Start there?`,
+    acts: [{ label: 'Show me', run: () => {
+      $('#f-severity').value = 'critical';
+      $('#f-severity').dispatchEvent(new Event('change'));
+    } }],
+  },
+  {
+    id: 'comments',
+    when: () => uncommented() >= 5,
+    say: () => `<b>${uncommented()}</b> findings have no comment yet. Future you `
+             + `will want to know what present you decided.`,
+  },
+  {
+    id: 'aml',
+    when: () => (state.rows || []).some(r => r.rule === 'AML-01'),
+    say: () => `The approved list is on the clock — AML-01 has the details. `
+             + `An expired AML answers "is this mill approved?" for a world `
+             + `that has moved on.`,
+    acts: [{ label: 'Find it', run: () => {
+      $('#f-q').value = 'approved manufacturer list';
+      $('#f-q').dispatchEvent(new Event('change'));
+    } }],
+  },
+  {
+    id: 'readings',
+    when: () => false,   // set by offerTheReadings when a machine is short
+    say: () => `This machine has not read its scanned certificates yet. `
+             + `Want the readings loaded?`,
+  },
+  {
+    id: 'coffee',
+    say: () => `You have been at this a while. When did you last look at `
+             + `something further than an arm's length away?`,
+  },
+  {
+    id: 'quiz-heat',
+    say: () => `Quick one — what is the difference between a heat number and `
+             + `a serial number?`,
+    acts: [{ label: 'Go on then', run: () => buddySay(
+      `A heat is the melt the steel came from, so a whole rolling shares it. `
+      + `A serial is one item. Filed a valve under its serial once and spent `
+      + `an afternoon looking for it on an as-built.`) }],
+  },
+  {
+    id: 'quiz-stencil',
+    say: () => `How many welders have you seen share a stencil this year?`,
+    acts: [
+      { label: 'None', run: () => buddySay(`Good. That is how it is meant to work.`) },
+      { label: 'Do not ask', run: () => buddySay(
+        `Thought so. It is why the roster gets cross-checked against the `
+        + `certificate rather than trusted on its own.`) },
+    ],
+  },
+  {
+    id: 'quiz-paperwork',
+    say: () => `Worse: a bad weld with no paperwork, or a good weld with bad `
+             + `paperwork?`,
+    acts: [
+      { label: 'Bad weld', run: () => buddySay(
+        `Right on the day. Wrong in five years, when the only thing left is `
+        + `the paperwork.`) },
+      { label: 'Bad paperwork', run: () => buddySay(
+        `That is the auditor's answer. The weld is done; the record is what `
+        + `everyone after you has to work from.`) },
+    ],
+  },
+  {
+    id: 'pipe',
+    say: () => `Best guess — how many feet of pipe have gone past your eyes `
+             + `this year?`,
+    acts: [{ label: 'Too many', run: () => buddySay(
+      `Every joint of it needed a heat, a welder, a shot and a station to `
+      + `agree with each other. That is what this is for.`) }],
+  },
+];
+
+function buddySay(text, acts) {
+  $('#buddy-says').innerHTML = text;
+  const bar = $('#buddy-acts');
+  bar.innerHTML = '';
+  for (const a of (acts || [])) {
+    const b = document.createElement('button');
+    b.textContent = a.label;
+    b.onclick = () => a.run();
+    bar.appendChild(b);
+  }
+}
+
+function buddyGo() {
+  clearTimeout(buddyTimer);
+  const el = $('#buddy');
+  el.classList.add('going');
+  setTimeout(() => { el.hidden = true; el.classList.remove('going'); }, 300);
+}
+
+//: It leaves on its own. A helper that sits in the corner of a table you are
+//: working in is in the way even when it is right, and the Comments column is
+//: on that side of the row.
+const BUDDY_LINGERS = 20000;
+let buddyTimer = null;
+
+function buddyShow(ask) {
+  buddyAsked.add(ask.id);
+  const el = $('#buddy');
+  buddySay(ask.say(), ask.acts);
+  el.hidden = false;
+  // Restart the draw each time it appears, or it only ever animates once.
+  el.style.animation = 'none';
+  void el.offsetWidth;
+  el.style.animation = '';
+  $('#buddy-mark').querySelectorAll('.b-bead path').forEach((r, i) => {
+    r.style.animationDelay = `${0.25 + i * 0.045}s`;
+  });
+  clearTimeout(buddyTimer);
+  buddyTimer = setTimeout(buddyGo, BUDDY_LINGERS);
+}
+
+// Touch the table and it stands aside without being asked. Answering it keeps
+// it — the timer only restarts when it has something new to say.
+document.addEventListener('pointerdown', (e) => {
+  if ($('#buddy').hidden) return;
+  if (e.target.closest('#buddy')) return;
+  if (e.target.closest('main')) buddyGo();
+}, true);
+
+function buddyMaybe() {
+  if (localStorage.getItem(BUDDY_OFF)) return;
+  if (!$('#buddy').hidden) return;             // already saying something
+  if ($('#go').disabled) return;               // an audit is running; not now
+  if (document.querySelector('.sheet:not([hidden])')) return;   // a dialog is open
+  if (document.querySelector('#findings textarea')) return;     // mid-comment
+
+  const can = BUDDY_ASKS.filter(a => !buddyAsked.has(a.id)
+                                  && (!a.when || a.when()));
+  if (!can.length) { buddyAsked = new Set(); return; }   // go round again later
+  buddyShow(can[Math.floor(Math.random() * can.length)]);
+}
+
+$('#buddy-close').onclick = buddyGo;
+$('#buddy-mark').onclick = () => {
+  // Poke it and it asks something else.
+  buddyGo();
+  setTimeout(buddyMaybe, 350);
+};
+$('#buddy-mute').querySelector('input').onchange = (e) => {
+  if (e.target.checked) {
+    localStorage.setItem(BUDDY_OFF, '1');
+    buddyGo();
+    toast('Right you are. The mark in the toolbar still works if you want it back.');
+  }
+};
+// The logo in the toolbar brings it back, muted or not.
+$('.logo').style.cursor = 'pointer';
+$('.logo').title = 'Ask me something';
+$('.logo').onclick = () => {
+  localStorage.removeItem(BUDDY_OFF);
+  buddyGo();
+  setTimeout(buddyMaybe, 350);
+};
+
+// First one only once there is something on screen worth talking about, then
+// occasionally. Long gaps on purpose.
+setTimeout(buddyMaybe, 45000);
+setInterval(buddyMaybe, 240000);
 
 // pywebview injects its bridge after the page loads and announces it here.
 window.addEventListener('pywebviewready', askForAJob);
