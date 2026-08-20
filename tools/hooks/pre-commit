@@ -1,0 +1,11 @@
+#!/bin/sh
+# Refuses a commit that would publish a secret, an unreviewed binary, or a
+# customer's data. See tools/pre_commit_check.py for what and why.
+#
+# Enable it once per clone:
+#     git config core.hooksPath tools/hooks
+#
+# Bypass a single commit with `git commit --no-verify`.
+PY="$HOME/.weldaudit/venv/Scripts/python.exe"
+[ -x "$PY" ] || PY=python
+exec "$PY" tools/pre_commit_check.py

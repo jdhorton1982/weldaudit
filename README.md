@@ -141,6 +141,21 @@ approved list on the machine and take their names out of whichever one they
 find, so they hold for any site's list rather than a particular one; without a
 list they skip.
 
+## Before you commit
+
+```bash
+git config core.hooksPath tools/hooks
+```
+
+Once per clone. It refuses a commit carrying a secret, an unreviewed binary,
+or anything matching `private/forbidden.txt` — a gitignored list of names that
+must not be published. The list is not in the repository, because a list of a
+customer's names is itself the thing being protected.
+
+The binary rule is the one that earns its keep. A `.docx` holding a database
+password once reached a public commit here: a review that reads the text diff
+is structurally blind to a zip, and no amount of care fixes that.
+
 ## A note on the fixtures
 
 Every manufacturer, heat number, job and contractor in this repository is
