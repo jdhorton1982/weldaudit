@@ -69,6 +69,16 @@ def test_browsing_something_that_is_not_a_folder_says_so(client, tmp_path):
     assert api.get("/api/browse", params={"path": str(missing)}).status_code == 400
 
 
+def as_issue(database, pid):
+    """Mark this job's finding an Issue, because only Issues reach a report.
+
+    The tests below are about how the file is transported and encoded, not
+    which findings qualify, so they need a row in it to look at.
+    """
+    with database.tx() as c:
+        c.execute("UPDATE finding SET status='accepted' WHERE project_id=?", (pid,))
+
+
 # -- getting the report out --------------------------------------------------
 
 def test_saving_puts_the_report_beside_the_job(client):
@@ -89,8 +99,9 @@ def test_excel_saves_beside_the_job_too(client):
     assert Path(body["path"]).is_file()
 
 
-def test_downloading_returns_the_file_rather_than_a_path(client):
+def test_downloading_returns_the_file_rather_than_a_path(client, job):
     api, pid, _root = client
+    as_issue(job[0], pid)
     r = api.get("/api/export",
                 params={"project_id": pid, "fmt": "csv", "to": "download"})
     assert r.status_code == 200
@@ -123,7 +134,8 @@ def test_an_unwritable_job_folder_falls_back_and_says_where(client, monkeypatch)
 
 def test_an_unknown_format_is_refused(client):
     api, pid, _root = client
-    r = api.get("/api/export", params={"project_id": pid, "fmt": "pdf", "to": "job"})
+    # Not "pdf" — that is a format now. Something nothing writes.
+    r = api.get("/api/export", params={"project_id": pid, "fmt": "docx", "to": "job"})
     assert r.status_code == 400
 
 
@@ -133,6 +145,7 @@ def test_the_csv_opens_correctly_in_excel(job, tmp_path):
     """Without a BOM, Excel on Windows reads UTF-8 as cp1252 and mangles the
     mill names the findings quote."""
     database, pid, _root = job
+    as_issue(database, pid)
     out = write_csv(database, pid, tmp_path / "x.csv")
     assert out.read_bytes().startswith(b"\xef\xbb\xbf")
 
@@ -257,3 +270,64 @@ def test_marking_a_finding_that_does_not_exist(client):
     api, _pid, _root = client
     r = api.post("/api/findings/999999/status", json={"status": "accepted"})
     assert r.status_code == 404
+
+
+# -- writing the report ourselves --------------------------------------------
+#
+# Reported from a colleague's machine: pressing Download gave a Windows box
+# offering to find an app in the Microsoft Store, and no file. Handing an
+# attachment to a WebView2 window depends on the window behaving like a
+# browser and on Windows having an association for .xlsx; neither is
+# guaranteed, and when either fails the auditor is left with nothing and no
+# message. ``to=downloads`` writes the file here and names the path, which
+# depends on nothing but the disk.
+
+
+def test_downloads_writes_the_file_and_names_it(client, monkeypatch, tmp_path):
+    api, pid, _root = client
+    home = tmp_path / "home"
+    (home / "Downloads").mkdir(parents=True)
+    monkeypatch.setattr(Path, "home", classmethod(lambda _cls: home))
+
+    r = api.get("/api/export", params={"project_id": pid, "fmt": "xlsx",
+                                       "to": "downloads"}).json()
+    assert r["saved"] is True
+    written = Path(r["path"])
+    assert written.parent == home / "Downloads"
+    assert written.is_file() and written.stat().st_size > 0
+
+
+def test_downloads_falls_back_when_there_is_no_downloads_folder(client, monkeypatch, tmp_path):
+    """A redirected or missing Downloads folder must not lose the report."""
+    api, pid, _root = client
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(Path, "home", classmethod(lambda _cls: home))
+
+    r = api.get("/api/export", params={"project_id": pid, "fmt": "csv",
+                                       "to": "downloads"}).json()
+    assert Path(r["path"]).is_file()
+    assert Path(r["path"]).parent == home / ".weldaudit" / "reports"
+
+
+def test_downloads_returns_a_path_rather_than_the_bytes(client, monkeypatch, tmp_path):
+    """The point of the mode: the caller gets somewhere to point the user,
+    not a payload the window then has to find a home for."""
+    api, pid, _root = client
+    home = tmp_path / "home"
+    (home / "Downloads").mkdir(parents=True)
+    monkeypatch.setattr(Path, "home", classmethod(lambda _cls: home))
+
+    r = api.get("/api/export", params={"project_id": pid, "to": "downloads"})
+    assert r.headers["content-type"].startswith("application/json")
+    assert "path" in r.json()
+
+
+def test_download_still_sends_the_file_back(client):
+    """The browser path is untouched: there, an attachment works."""
+    api, pid, _root = client
+    r = api.get("/api/export", params={"project_id": pid, "fmt": "xlsx",
+                                       "to": "download"})
+    assert r.headers["content-type"].startswith(
+        "application/vnd.openxmlformats")
+    assert "attachment" in r.headers["content-disposition"]

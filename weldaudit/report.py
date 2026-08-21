@@ -79,6 +79,65 @@ def paths_for(db: Database, row) -> list[str]:
     return out
 
 
+def status_word(status: str | None) -> str:
+    """The Status column, in the words the auditor used on screen.
+
+    ``accepted`` is what the database has called a confirmed exception since
+    before the buttons said "Issue", and renaming the stored value would throw
+    away every decision already taken. So the translation happens here, at the
+    edge, where the report is written for somebody who never saw the app.
+
+    ``dismissed`` has no word because it never reaches a report -- see
+    ``reportable`` -- but it is mapped anyway rather than falling through to a
+    bare "dismissed" if that ever changes.
+    """
+    return {
+        "accepted": "ISSUE",
+        "dismissed": "no issue",
+        "open": "Not reviewed",
+        None: "Not reviewed",
+        "": "Not reviewed",
+    }.get(status, status or "Not reviewed")
+
+
+def reportable(db: Database, project_id: int) -> list:
+    """The findings that go out, worst first: the ones marked **Issue**.
+
+    The report is a punch list for the person revising the documents, so it
+    carries what the auditor has confirmed is wrong and nothing else. A
+    finding marked "no issue" has been checked and cleared, and one nobody has
+    judged yet has not been through an auditor at all -- neither is work for
+    the contractor, and every row of either costs the real ones some
+    attention.
+
+    Nothing is thrown away. Both stay in the app under their own filter, keep
+    their comments, and survive the next audit, so the record of what was
+    looked at lives where the auditor can produce it.
+
+    **The cost of this is a report that is empty until somebody works through
+    the list**, and an empty report reads exactly like a clean package. That
+    is the one confusion this program exists to prevent, so ``unreviewed``
+    below counts what is being held back and the window says so before the
+    file is saved.
+    """
+    return db.q(
+        """SELECT f.*, d.path AS doc_path, d.filename
+           FROM finding f LEFT JOIN document d ON d.id = f.document_id
+           WHERE f.project_id=? AND f.status = 'accepted'
+           ORDER BY CASE f.severity WHEN 'critical' THEN 0 WHEN 'major' THEN 1
+                                    WHEN 'minor' THEN 2 ELSE 3 END,
+                    f.segment, f.rule, f.subject""",
+        (project_id,),
+    )
+
+
+def unreviewed(db: Database, project_id: int) -> int:
+    """How many findings nobody has judged yet, and so are not in the report."""
+    return db.one(
+        "SELECT COUNT(*) AS n FROM finding WHERE project_id=? "
+        "AND IFNULL(status, 'open') = 'open'", (project_id,))["n"]
+
+
 def _findings_sheet(db, project_id, wb, head, wrap, sev_fmt) -> None:
     ws = wb.add_worksheet("Findings")
     cols = [("Severity", 10), ("Rule", 9), ("Segment", 30), ("Subject", 16),
@@ -90,15 +149,7 @@ def _findings_sheet(db, project_id, wb, head, wrap, sev_fmt) -> None:
     ws.freeze_panes(1, 0)
     ws.autofilter(0, 0, 0, len(cols) - 1)
 
-    rows = db.q(
-        """SELECT f.*, d.path AS doc_path, d.filename
-           FROM finding f LEFT JOIN document d ON d.id = f.document_id
-           WHERE f.project_id=?
-           ORDER BY CASE f.severity WHEN 'critical' THEN 0 WHEN 'major' THEN 1
-                                    WHEN 'minor' THEN 2 ELSE 3 END,
-                    f.segment, f.rule, f.subject""",
-        (project_id,),
-    )
+    rows = reportable(db, project_id)
     for r, row in enumerate(rows, start=1):
         ws.write(r, 0, row["severity"], sev_fmt.get(row["severity"], wrap))
         ws.write(r, 1, row["rule"], wrap)
@@ -118,7 +169,7 @@ def _findings_sheet(db, project_id, wb, head, wrap, sev_fmt) -> None:
         # this is what somebody copies when they go to the share to correct a
         # record, and what survives the workbook being emailed on.
         ws.write(r, 7, "\n".join(paths), wrap)
-        ws.write(r, 8, row["status"] or "open", wrap)
+        ws.write(r, 8, status_word(row["status"]), wrap)
         # What a person wrote about this finding. Last column because it is the
         # one an auditor adds to, and a column you type in belongs at the end of
         # the row rather than between two the program owns.
@@ -624,15 +675,7 @@ def write_csv(db: Database, project_id: int, path: str | Path) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    rows = db.q(
-        """SELECT f.*, d.path AS doc_path, d.filename
-           FROM finding f LEFT JOIN document d ON d.id = f.document_id
-           WHERE f.project_id=?
-           ORDER BY CASE f.severity WHEN 'critical' THEN 0 WHEN 'major' THEN 1
-                                    WHEN 'minor' THEN 2 ELSE 3 END,
-                    f.segment, f.rule, f.subject""",
-        (project_id,),
-    )
+    rows = reportable(db, project_id)
 
     with path.open("w", newline="", encoding="utf-8-sig") as handle:
         out = csv.writer(handle)
@@ -647,7 +690,7 @@ def write_csv(db: Database, project_id: int, path: str | Path) -> Path:
                 (r["detail"] if "detail" in keys else "") or "",
                 r["doc_path"] or r["filename"] or "",
                 " | ".join(paths_for(db, r)),
-                (r["status"] if "status" in keys else "") or "open",
+                status_word(r["status"] if "status" in keys else ""),
                 (r["note"] if "note" in keys else "") or "",
             ])
     return path

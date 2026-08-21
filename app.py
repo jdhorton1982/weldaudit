@@ -22,6 +22,7 @@ machines this runs on are managed and their users are not administrators.
 from __future__ import annotations
 
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -245,6 +246,14 @@ class _Windows:
 
         The name is taken from what the server called it rather than made up
         here, so the file is named the same whichever way it was saved.
+
+        **The extension is put back if the user drops it.** The dialog hands
+        back the name exactly as typed, and an auditor renaming the file to
+        something useful -- "16 PW - PUNCHLIST" -- loses the ".xlsx" with it.
+        The bytes are a perfectly good workbook; Windows just has nothing to
+        open a file with no extension, so it offers to find an app in the
+        Store. That looked from the far end like the download being broken,
+        and the report had in fact saved correctly every time.
         """
         import urllib.parse
         import urllib.request
@@ -265,12 +274,85 @@ class _Windows:
         dialog = getattr(webview, "SAVE_DIALOG", None)
         if dialog is None:                    # newer pywebview renamed these
             dialog = webview.FileDialog.SAVE
-        chosen = windows[0].create_file_dialog(dialog, save_filename=suggested)
+        wanted = Path(suggested).suffix       # '.xlsx' or '.csv'
+        kinds = (f"WeldAudit report (*{wanted})", "All files (*.*)") if wanted else ()
+        try:
+            chosen = windows[0].create_file_dialog(
+                dialog, save_filename=suggested, file_types=kinds)
+        except (TypeError, ValueError):
+            # Some backends reject file_types on a save dialog. The filter is
+            # a convenience; the extension is put back below regardless.
+            chosen = windows[0].create_file_dialog(dialog, save_filename=suggested)
         if not chosen:
             return ""
-        where = chosen[0] if isinstance(chosen, (list, tuple)) else str(chosen)
-        Path(where).write_bytes(body)
-        return where
+        where = Path(chosen[0] if isinstance(chosen, (list, tuple)) else str(chosen))
+        if wanted and where.suffix.lower() != wanted.lower():
+            # Appending, not replacing -- "16 PW - REV 1.2" has a suffix of
+            # ".2", and replacing it would eat part of the name the auditor
+            # chose. The one exception is a name already ending in one of the
+            # *other* report formats, which is a mistake rather than part of
+            # the name: a CSV called .xlsx makes Excel refuse to open it.
+            if where.suffix.lower() in {".xlsx", ".csv", ".pdf"}:
+                where = where.with_suffix(wanted)
+            else:
+                where = where.with_name(where.name + wanted)
+        where.write_bytes(body)
+        return str(where)
+
+    def reveal(self, path: str) -> bool:
+        """Show a saved file in Explorer, selected.
+
+        Not "open the file" — opening it needs a program registered for the
+        extension, and the report of this going wrong was a machine that had
+        Excel but had lost the association, so Windows offered the Store
+        instead of a spreadsheet. Explorer needs no association, and seeing
+        the file sitting there is what tells an auditor the report exists.
+        """
+        from pathlib import Path
+
+        target = Path(path)
+        if not target.exists():
+            return False
+        try:
+            # /select, takes the path as one argument and Explorer is fussy
+            # about quoting, so it is passed as a single pre-joined string.
+            subprocess.Popen(f'explorer /select,"{target}"')  # noqa: S603,S607
+        except OSError as why:
+            _say(f"could not reveal {target}: {why!r}")
+            return False
+        return True
+
+    def pick_files(self, start: str = "") -> list[str]:
+        """Files the user chose, or [] if they cancelled. Multi-select.
+
+        The Windows folder browser shows no files at all, so somebody handed a
+        package cannot see what is in it, and somebody holding one document
+        has nothing to point at. This is the other door.
+
+        The paths come back in full, which is the point: a certificate picked
+        out of ``BOOK\\7 MTRS`` is still under section 7, so selecting every
+        file in a package gives the same audit as selecting the package.
+        """
+        import webview
+
+        dialog = getattr(webview, "OPEN_DIALOG", None)
+        if dialog is None:                    # newer pywebview renamed these
+            dialog = webview.FileDialog.OPEN
+        kinds = ("Documents (*.pdf;*.xlsx;*.xls;*.xlsm;*.csv;*.docx;*.doc;*.dwg;*.txt)",
+                 "All files (*.*)")
+        try:
+            chosen = webview.windows[0].create_file_dialog(
+                dialog, directory=start or "", allow_multiple=True, file_types=kinds)
+        except (TypeError, ValueError):
+            # A backend that will not take the filter still has to open.
+            chosen = webview.windows[0].create_file_dialog(
+                dialog, directory=start or "", allow_multiple=True)
+        except Exception as why:              # noqa: BLE001 - report, don't die
+            _say(f"file dialog failed: {why!r}")
+            raise
+        if not chosen:
+            return []
+        return [str(c) for c in chosen] if isinstance(chosen, (list, tuple)) else [str(chosen)]
 
     def pick_folder(self, start: str = "") -> str:
         """The folder the user chose, or "" if they cancelled."""

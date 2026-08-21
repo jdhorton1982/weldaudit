@@ -13,7 +13,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Iterator
+from typing import Callable, Iterable, Iterator
 
 from .db import Database
 from .taxonomy import REQUIRED_SECTIONS, SECTIONS, kind_for, section_for, segment_for
@@ -100,15 +100,54 @@ def walk(root: str | Path) -> Iterator[Path]:
             yield Path(dirpath) / fn
 
 
+def chosen_files(paths: Iterable[str | Path]) -> list[Path]:
+    """Keep the ones worth recording, from a list somebody picked by hand.
+
+    The same two filters ``walk`` applies, so choosing every file in a folder
+    and choosing the folder come to the same thing. Junk and unreadable
+    extensions go, and the order the dialog returned is kept.
+    """
+    out: list[Path] = []
+    for raw in paths:
+        p = Path(raw)
+        if is_junk(p.name) or p.suffix.lower() not in KEEP_EXT:
+            continue
+        if p.is_file():
+            out.append(p)
+    return out
+
+
+def common_parent(paths: list[Path]) -> Path:
+    """The folder a hand-picked set of files belongs to.
+
+    It becomes the project root, which is what segments are measured against,
+    so it has to be a real folder rather than the longest shared string.
+    """
+    if not paths:
+        return Path.cwd()
+    if len(paths) == 1:
+        return paths[0].parent
+    shared = os.path.commonpath([str(p.parent) for p in paths])
+    return Path(shared)
+
+
 def index_project(
     db: Database,
     name: str,
     root: str | Path,
     *,
     hash_files: bool = False,
+    only: list[str | Path] | None = None,
     progress: Callable[[int, str], None] | None = None,
 ) -> tuple[int, IndexStats]:
-    """Index ``root`` as project ``name``.  Returns ``(project_id, stats)``."""
+    """Index ``root`` as project ``name``.  Returns ``(project_id, stats)``.
+
+    ``only`` indexes exactly those files instead of walking the folder, for
+    when somebody picked them out of a file dialog. They keep their real
+    paths, so a file chosen out of ``BOOK\\7 MTRS`` is still filed under
+    section 7 — picking every file in a package and picking the package
+    itself give the same answer.
+    """
     root = str(Path(root).resolve())
     project_id = db.upsert_project(name, root)
     stats = IndexStats()
@@ -141,7 +180,7 @@ def index_project(
     batch: list[tuple] = []
     segments: set[str] = set()
 
-    for path in walk(root):
+    for path in (chosen_files(only) if only is not None else walk(root)):
         stats.files_seen += 1
         try:
             st = path.stat()

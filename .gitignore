@@ -52,3 +52,10 @@ supabase/.branches/
 *.txt
 !requirements.txt
 !README.txt
+
+# The approved materials list, bundled into the exe so a machine without one
+# beside its jobs still runs the manufacturer-approval checks. It is a
+# customer document and this repository is public: the build picks it up from
+# here if it is present, and anyone building without it simply gets a program
+# that finds the list on disk as before.
+weldaudit/data/

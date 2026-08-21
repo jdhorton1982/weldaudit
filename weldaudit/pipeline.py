@@ -50,6 +50,7 @@ def run(
     root: str | Path,
     *,
     only_rules: list[str] | None = None,
+    only_files: list[str] | None = None,
     aml_workbook: str | Path | None = None,
     progress: Progress | None = None,
 ) -> RunResult:
@@ -61,7 +62,7 @@ def run(
     started = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
     say("index", f"Scanning {root}")
-    project_id, stats = index_project(db, name, root)
+    project_id, stats = index_project(db, name, root, only=only_files)
     say("index", f"{stats.files_indexed:,} files across {stats.segments} segments")
 
     counts: dict[str, int] = {}

@@ -85,6 +85,22 @@
   }
   nav button.on { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
   .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  /* The AML verdict. Deliberately loud: it is the answer, and the table under
+     it is only the working. The border carries the status as well as the
+     text, so it reads at a glance without relying on colour alone. */
+  #aml-verdict { margin-bottom: 12px; padding: 10px 14px; border-radius: 8px;
+                 border: 1px solid var(--line); border-left-width: 5px;
+                 background: var(--panel); font-size: 13px; }
+  #aml-verdict b { font-size: 14px; }
+  #aml-verdict .why { color: var(--muted); }
+  #aml-verdict.v-approved   { border-left-color: var(--ok); }
+  #aml-verdict.v-confirm,
+  #aml-verdict.v-size       { border-left-color: var(--major); }
+  #aml-verdict.v-not_listed { border-left-color: var(--critical); }
+  tr.hit td { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+  td .flag { font-size: 11px; text-transform: uppercase; letter-spacing: .5px;
+             color: var(--major); }
+  td .sz-excludes { color: var(--critical); } td .sz-allows { color: var(--ok); }
   .tablewrap { overflow: auto; background: var(--panel);
                border: 1px solid var(--line); border-radius: 8px;
                flex: 1 1 auto; min-height: 140px; }
@@ -116,6 +132,17 @@
   a { color: var(--accent); }
   .act { display: flex; gap: 4px; }
   .act button { padding: 3px 8px; font-size: 12px; }
+  /* Two verdicts, and they are opposites, so they are told apart by their
+     words first and their colour second — a tick and a cross had to be read
+     twice to remember which way round they went, and the colours alone would
+     be invisible to a red-green colour blind auditor. */
+  .act .issue   { color: var(--critical); border-color: var(--critical); }
+  .act .noissue { color: var(--ok);       border-color: var(--ok); }
+  .act .issue:hover   { background: color-mix(in srgb, var(--critical) 12%, transparent); }
+  .act .noissue:hover { background: color-mix(in srgb, var(--ok) 14%, transparent); }
+  /* The verdict already taken, on a row that has been dealt with. */
+  td.sev em.v-accepted  { color: var(--critical); font-style: normal; }
+  td.sev em.v-dismissed { color: var(--ok);       font-style: normal; }
   .empty { padding: 40px; text-align: center; color: var(--muted); }
   .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; min-width: 90px; }
   .bar i { display: block; height: 100%; background: var(--accent); }
@@ -295,6 +322,8 @@
   <input type="text" id="root" placeholder="Folder to audit, e.g. C:\Users\...\the operator\GL 31">
   <button id="manage" title="Remove audits you no longer need">Manage…</button>
   <button id="browse" title="Pick the folder instead of typing it">Browse…</button>
+  <button id="browse-files"
+    title="Pick documents instead of a folder — Ctrl+A selects them all">Files…</button>
   <button class="primary" id="go">Run audit</button>
   <button id="ocr" title="Read this job's scanned certificates on this machine — free, offline">Read scans</button>
   <span id="progress" style="color:var(--muted)"></span>
@@ -302,6 +331,7 @@
   <select id="fmt" title="Report format">
     <option value="xlsx">Excel</option>
     <option value="csv">CSV</option>
+    <option value="pdf">PDF (to print)</option>
   </select>
   <button id="save" title="Write the report into the job folder">Save to job folder</button>
   <button id="export">Download</button>
@@ -354,6 +384,7 @@
     <button data-tab="backfill">Backfill</button>
     <button data-tab="asbuilt">As-built</button>
     <button data-tab="completeness">Book completeness</button>
+    <button data-tab="aml">Approved list</button>
   </nav>
 
   <section id="tab-findings">
@@ -362,10 +393,10 @@
       <select id="f-rule"><option value="">All rules</option></select>
       <select id="f-segment"><option value="">All segments</option></select>
       <select id="f-status">
-        <option value="open">Open</option>
+        <option value="open">Not yet reviewed</option>
         <option value="">Any status</option>
-        <option value="accepted">Accepted</option>
-        <option value="dismissed">Dismissed</option>
+        <option value="accepted">Issue</option>
+        <option value="dismissed">No issue</option>
       </select>
       <input type="text" id="f-q" placeholder="Search text…">
       <span id="count" style="align-self:center;color:var(--muted)"></span>
@@ -382,6 +413,22 @@
   <section id="tab-backfill" hidden><div class="tablewrap"><table id="backfill"></table></div></section>
   <section id="tab-asbuilt" hidden><div class="tablewrap"><table id="asbuilt"></table></div></section>
   <section id="tab-completeness" hidden><div class="tablewrap"><table id="completeness"></table></div></section>
+
+  <!-- The approved list, searchable. A finding that says a mill is not on the
+       AML is worth little if checking it means opening a 57-page PDF. -->
+  <section id="tab-aml" hidden>
+    <div class="filters">
+      <input type="text" id="aml-q" placeholder="Manufacturer as printed on the certificate…"
+             style="min-width:340px;flex:1 1 340px">
+      <input type="text" id="aml-nps" placeholder="NPS" title="Optional: check the size too"
+             style="width:78px">
+      <select id="aml-cat"><option value="">All categories</option></select>
+      <span id="aml-count" style="align-self:center;color:var(--muted)"></span>
+    </div>
+    <div id="aml-verdict" hidden></div>
+    <div class="tablewrap"><table id="aml"></table></div>
+    <div id="aml-source" style="color:var(--muted);font-size:12px;padding:6px 2px"></div>
+  </section>
 </main>
 
 <div id="toast"></div>
@@ -622,6 +669,7 @@ async function selectProject(id) {
   const p = projects.find(x => x.id === id);
   if (p) {
     $('#root').value = p.root;
+    state.picked = null;
     $('#cards').innerHTML = ['critical','major','minor','info'].map(s =>
       `<div class="card"><b class="${s}">${p.counts[s]}</b><small>${s}</small></div>`).join('')
       + `<div class="card"><b>${p.counts.total}</b><small>total</small></div>`;
@@ -631,7 +679,12 @@ async function selectProject(id) {
   fillFacet('#f-rule', state.facets.rule, 'All rules',
             v => `${v} · ${state.facets.rule_titles[v] || ''}`);
   fillFacet('#f-segment', state.facets.segment, 'All segments');
+  // Each job keeps the list it was audited against, so switching jobs can
+  // switch AML revision — the categories have to be built again.
+  amlCats = false;
+  $('#aml-cat').innerHTML = '<option value="">All categories</option>';
   await Promise.all([loadFindings(), loadSummary()]);
+  if (!$('#tab-aml').hidden) await loadAml();
 }
 
 function fillFacet(sel, items, allLabel, label) {
@@ -642,6 +695,11 @@ function fillFacet(sel, items, allLabel, label) {
 }
 
 // -- findings ---------------------------------------------------------------
+
+// The two verdicts, in the words an auditor uses. The stored values stay
+// 'accepted' and 'dismissed' — renaming them in the database would throw away
+// every decision already taken, which is the one thing these must survive.
+const VERDICT_WORD = { accepted: 'issue', dismissed: 'no issue' };
 
 async function loadFindings() {
   if (!state.project) return;
@@ -664,7 +722,9 @@ async function loadFindings() {
       <th></th></tr></thead><tbody>`
     + rows.map(r => `<tr data-id="${r.id}" class="${r.status !== 'open' ? 'done' : ''}">
         <td class="sev ${r.severity}">${r.severity}${
-             r.status !== 'open' ? `<em>${esc(r.status)}</em>` : ''}</td>
+             r.status !== 'open'
+               ? `<em class="v-${esc(r.status)}">${VERDICT_WORD[r.status] || esc(r.status)}</em>`
+               : ''}</td>
         <td class="rule" title="${esc(state.facets.rule_titles[r.rule] || '')}">${esc(r.rule)}</td>
         <td>${esc(r.segment)}</td>
         <td class="subject">${esc(r.subject)}</td>
@@ -678,10 +738,13 @@ async function loadFindings() {
             r.note ? esc(r.note) : '<i>add…</i>'}</td>
         <td class="act">
           ${r.status === 'open' ? `
-          <button onclick="mark(${r.id},'accepted')" title="Confirmed as a real exception">✓</button>
-          <button onclick="mark(${r.id},'dismissed')" title="Not an issue">✕</button>`
+          <button class="issue" onclick="mark(${r.id},'accepted')"
+            title="A real exception. Stays in the report that goes out.">Issue</button>
+          <button class="noissue" onclick="mark(${r.id},'dismissed')"
+            title="Checked, nothing wrong. Kept here, left out of the report that goes out.">No issue</button>`
           : `<button onclick="mark(${r.id},'open')"
-               title="Put this back on the list — undo the ${esc(r.status)} mark">↺</button>`}
+               title="Put this back on the list — undo the &quot;${
+                 VERDICT_WORD[r.status] || esc(r.status)}&quot; mark">↺</button>`}
           ${r.document_id ? `<button onclick="correct(${r.document_id})"
              title="Open the page, read the manufacturer, and enter it">✎</button>` : ''}
         </td></tr>`).join('') + '</tbody>';
@@ -745,7 +808,12 @@ window.editComment = (id) => {
   };
 };
 
-const MARKED = { accepted: 'Accepted', dismissed: 'Dismissed', open: 'Back on the list' };
+const MARKED = {
+  accepted: 'Marked as an issue',
+  // Says where it went, because it leaves the report as well as the list.
+  dismissed: 'Marked no issue — left out of the report',
+  open: 'Back on the list',
+};
 
 // Marking a finding usually removes it from view, because the status filter
 // starts on Open. So the confirmation carries the way back with it: the row
@@ -935,12 +1003,13 @@ async function loadSummary() {
 
 $('#go').onclick = async () => {
   const root = $('#root').value.trim();
-  if (!root) return toast('Enter a folder to audit.');
+  const picked = state.picked;
+  if (!root && !picked) return toast('Enter a folder to audit.');
   $('#go').disabled = true;
   try {
     await api('/api/audit', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ root })
+      body: JSON.stringify(picked ? { root, paths: picked } : { root })
     });
     poll();
   } catch (e) { toast(e.message); $('#go').disabled = false; }
@@ -984,20 +1053,64 @@ async function poll() {
 // it at an attachment URL does nothing whatever — no file, no error, no
 // dialog. Inside the window the report is fetched and saved through a real
 // Save As box; in a browser tab, the ordinary navigation still works.
+// Whatever happens, the file gets written by the program and its path is
+// named. Handing an attachment to the window and hoping is what produced a
+// Windows box offering to find an app in the Store, on a machine where the
+// report had in fact never been written at all.
+async function writeItOurselves() {
+  const r = await api('/api/export?project_id=' + state.project +
+                      '&fmt=' + $('#fmt').value + '&to=downloads');
+  const bridge = window.pywebview && window.pywebview.api;
+  toast('Saved to ' + r.path,
+        bridge && bridge.reveal
+          ? { label: 'Open folder', run: () => bridge.reveal(r.path) }
+          : undefined);
+}
+
+// The report carries only what is marked Issue, so it can be empty or short
+// while the findings list is long. An empty report reads as a clean package,
+// which is the one thing this program must never let happen quietly — so the
+// gap is named before the file is written, not discovered by the contractor.
+async function confirmScope() {
+  const s = await api('/api/report-scope?project_id=' + state.project);
+  if (!s.unreviewed) return true;
+  const held = `${s.unreviewed} finding${s.unreviewed === 1 ? '' : 's'} not yet reviewed`;
+  return confirm(
+    (s.going_out
+      ? `This report will contain ${s.going_out} finding${s.going_out === 1 ? '' : 's'} marked Issue.`
+      : `This report will be EMPTY — nothing has been marked Issue yet.`)
+    + `\n\n${held} will be left out, because only findings marked Issue go into `
+    + `the report.\n\nSave it anyway?`);
+}
+
 $('#export').onclick = async () => {
   if (!state.project) return toast('Audit a job first');
-  const url = '/api/export?project_id=' + state.project +
-              '&fmt=' + $('#fmt').value + '&to=download';
-  const bridge = window.pywebview && window.pywebview.api;
-  if (!bridge || !bridge.save_report) {
-    location.href = url;
-    return;
-  }
+  if (!await confirmScope()) return;
   const button = $('#export');
   button.disabled = true;
   try {
-    const saved = await bridge.save_report(location.origin + url);
-    toast(saved ? 'Saved to ' + saved : 'Nothing saved.');
+    const bridge = window.pywebview && window.pywebview.api;
+    if (bridge && bridge.save_report) {
+      // A real Save As box, so the auditor picks where it goes.
+      const url = '/api/export?project_id=' + state.project +
+                  '&fmt=' + $('#fmt').value + '&to=download';
+      let saved;
+      try {
+        saved = await bridge.save_report(location.origin + url);
+      } catch (e) {
+        // The dialog is the only part that can fail for reasons outside this
+        // program — a pywebview version that renamed the constant, a machine
+        // with no shell dialogs. Losing the report over it is not acceptable.
+        await writeItOurselves();
+        return;
+      }
+      if (saved) toast('Saved to ' + saved,
+                       bridge.reveal ? { label: 'Open folder', run: () => bridge.reveal(saved) }
+                                     : undefined);
+      else toast('Nothing saved.');
+    } else {
+      await writeItOurselves();
+    }
   } catch (e) {
     toast('Could not save the report: ' + (e.message || e));
   } finally {
@@ -1009,6 +1122,7 @@ $('#export').onclick = async () => {
 // wants; the browser's Downloads folder is a detour on the way there.
 $('#save').onclick = async () => {
   if (!state.project) return toast('Audit a job first');
+  if (!await confirmScope()) return;
   const r = await api('/api/export?project_id=' + state.project +
                       '&fmt=' + $('#fmt').value + '&to=job');
   toast(r.fell_back ? ('Saved to ' + r.path + ' — ' + r.reason)
@@ -1082,7 +1196,9 @@ $('#browse').onclick = async () => {
   if (native) {
     try {
       const chosen = await window.pywebview.api.pick_folder($('#root').value.trim());
-      if (chosen) $('#root').value = chosen;
+      // Setting .value in code fires no input event, so the file selection
+      // this replaces has to be dropped by hand or the folder is ignored.
+      if (chosen) { $('#root').value = chosen; state.picked = null; }
       return;
     } catch (err) {
       toast('Could not open the Windows folder dialog; using the list instead.');
@@ -1090,9 +1206,39 @@ $('#browse').onclick = async () => {
   }
   pickShow($('#root').value.trim());
 };
+
+// Picking documents rather than a folder. The Windows folder browser shows no
+// files, so there is no way to look inside before choosing, and somebody
+// holding a single document has nothing to point at.
+$('#browse-files').onclick = async () => {
+  const native = window.pywebview && window.pywebview.api
+                 && window.pywebview.api.pick_files;
+  if (!native) {
+    return toast('Choosing files needs the WeldAudit window. In a browser tab, '
+               + 'type or browse to the folder instead.');
+  }
+  let picked = [];
+  try {
+    picked = await window.pywebview.api.pick_files($('#root').value.trim());
+  } catch (err) {
+    return toast('Could not open the Windows file dialog.');
+  }
+  if (!picked || !picked.length) return;          // cancelled
+  state.picked = picked;
+  // The box shows the folder they came from, because that is what the audit
+  // is rooted at, with the count so it is obvious this is a partial pick.
+  const parent = picked[0].replace(/[\\/][^\\/]*$/, '');
+  $('#root').value = parent;
+  toast(`${picked.length} file${picked.length === 1 ? '' : 's'} chosen — press Run audit.`);
+};
+
+// Typing or browsing a folder replaces a file selection: two ways of saying
+// what to audit, and the last one used is the one meant.
+$('#root').addEventListener('input', () => { state.picked = null; });
+
 $('#pick-cancel').onclick = () => { $('#picker').hidden = true; };
 $('#pick-use').onclick = () => {
-  if (pickAt) $('#root').value = pickAt;
+  if (pickAt) { $('#root').value = pickAt; state.picked = null; }
   $('#picker').hidden = true;
 };
 $('#picker').onclick = e => { if (e.target.id === 'picker') $('#picker').hidden = true; };
@@ -1107,11 +1253,117 @@ for (const sel of ['#f-severity','#f-rule','#f-segment','#f-status']) {
 }
 let qt; $('#f-q').oninput = () => { clearTimeout(qt); qt = setTimeout(loadFindings, 250); };
 
+// -- the approved list -------------------------------------------------------
+// Two answers to one query. The banner is the audit's own verdict, from the
+// same matcher the rules call, so what the box says and what the report says
+// cannot drift apart. The table under it is a plain substring search, because
+// "not listed" is only worth having if you can see what the list does hold.
+
+const VERDICT = {
+  approved:   ['On the approved list',        'var(--ok)'],
+  confirm:    ['Close, but confirm by hand',  'var(--major)'],
+  size:       ['Approved, but not this size', 'var(--major)'],
+  not_listed: ['Not on the approved list',    'var(--critical)'],
+};
+let amlCats = false;
+
+async function loadAml() {
+  if (!state.project) return;
+  const p = new URLSearchParams({ project_id: state.project,
+                                  q: $('#aml-q').value.trim(),
+                                  nps: $('#aml-nps').value.trim(),
+                                  category: $('#aml-cat').value });
+  const r = await api('/api/aml?' + p);
+
+  if (!r.loaded) {
+    $('#aml-verdict').hidden = true;
+    $('#aml').innerHTML = `<tbody><tr><td class="empty">No approved list was
+      loaded for this job. Point the audit at the AML PDF or spreadsheet and
+      run it again.</td></tr></tbody>`;
+    $('#aml-source').textContent = '';
+    return;
+  }
+
+  if (!amlCats) {                       // fill once; the list does not change
+    amlCats = true;
+    for (const c of r.categories) {
+      const o = document.createElement('option');
+      o.value = o.textContent = c;
+      $('#aml-cat').appendChild(o);
+    }
+  }
+
+  const v = $('#aml-verdict');
+  if (r.verdict) {
+    const [label] = VERDICT[r.verdict.status] || ['—'];
+    v.className = 'v-' + r.verdict.status;
+    v.hidden = false;
+    v.innerHTML = `<b>${esc(label)}</b>`
+      + (r.verdict.names.length
+          ? ` — ${r.verdict.names.map(n => esc(n)).join(', ')}` : '')
+      // Named as the nearest, never as a match: it is a different company.
+      + (r.verdict.nearest
+          ? ` <span class="why">— closest name on the list is ${esc(r.verdict.nearest)}</span>` : '')
+      // The score and reason are shown because this is the same call the
+      // audit makes: seeing "matched on a leading-word prefix, 95" is how
+      // somebody understands why a finding said what it said.
+      + `<div class="why">${esc(r.verdict.reason)}`
+      + (r.verdict.score ? ` · scored ${r.verdict.score} of 100` : '')
+      + (r.nps !== null ? ` · checked against NPS ${r.nps}` : '')
+      + `</div>`;
+  } else {
+    v.hidden = true;
+  }
+
+  $('#aml-count').textContent = r.total
+    ? (r.shown < r.total ? `showing ${r.shown} of ${r.total}` : `${r.total} entr${r.total === 1 ? 'y' : 'ies'}`)
+    : '';
+
+  $('#aml').innerHTML = `<thead><tr>
+      <th>Manufacturer</th><th>Approved location</th><th>Category</th>
+      <th>Specific limits</th></tr></thead><tbody>`
+    + (r.rows.length ? r.rows.map(e => `<tr${e.matched ? ' class="hit"' : ''}>
+        <td>${esc(e.manufacturer)}${e.flag
+              ? ` <span class="flag">${esc(e.flag)}</span>` : ''}</td>
+        <td>${esc(e.location)}</td>
+        <td>${esc(e.category)}</td>
+        <td>${esc(e.limits) || '—'}${e.size
+              ? ` <span class="sz-${e.size}">${e.size === 'allows'
+                    ? '✓ covers NPS ' + r.nps : '✗ excludes NPS ' + r.nps}</span>` : ''}</td>
+      </tr>`).join('')
+      : `<tr><td class="empty">Nothing on the list matches that.</td></tr>`)
+    + '</tbody>';
+
+  const s = r.source || {};
+  $('#aml-source').textContent = [
+    `${r.entries} entries`,
+    s.revision ? `revision ${s.revision}` : '',
+    r.expired ? '— THIS LIST HAS EXPIRED' : '',
+    // Where it came from changes what the audit can claim. A copy built into
+    // the program is whatever was current when the program was built, so it
+    // is named as such rather than as a file the auditor chose.
+    s.kind === 'bundled'
+      ? '— the copy built into WeldAudit, because no approved list was found near the job'
+      : (s.path ? `read from ${s.path.split(/[\\/]/).pop()}` : ''),
+  ].filter(Boolean).join(' · ');
+}
+
+{
+  // Typed search, settled briefly so a name is not looked up letter by letter.
+  let timer = null;
+  const again = () => { clearTimeout(timer); timer = setTimeout(() => loadAml().catch(e => toast(e.message)), 200); };
+  for (const id of ['#aml-q', '#aml-nps']) $(id).oninput = again;
+  $('#aml-cat').onchange = again;
+}
+
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
-  for (const t of ['findings','coverage','pressure','coating','flanges','procedures','welders','backfill','asbuilt','completeness']) {
+  for (const t of ['findings','coverage','pressure','coating','flanges','procedures','welders','backfill','asbuilt','completeness','aml']) {
     $('#tab-' + t).hidden = (t !== b.dataset.tab);
   }
+  // The list is 1,353 rows and nothing else needs it, so it is fetched when
+  // the tab is first opened rather than with the rest of the audit.
+  if (b.dataset.tab === 'aml') loadAml();
 });
 
 loadProjects().catch(e => toast(e.message));
@@ -1139,6 +1391,7 @@ async function askForAJob() {
     return;
   }
   $('#root').value = chosen;
+  state.picked = null;
   $('#go').onclick();
 }
 

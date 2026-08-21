@@ -152,6 +152,7 @@ def test_the_csv_carries_a_comments_column(api, job, tmp_path):
     db, pid = job
     fid = _finding(db, pid)
     api.post(f"/api/findings/{fid}/comment", json={"text": "chased Monday"})
+    api.post(f"/api/findings/{fid}/status", json={"status": "accepted"})
 
     import csv
     out = write_csv(db, pid, tmp_path / "x.csv")
@@ -167,6 +168,7 @@ def test_the_excel_carries_a_comments_column(api, job, tmp_path):
     db, pid = job
     fid = _finding(db, pid)
     api.post(f"/api/findings/{fid}/comment", json={"text": "chased Monday"})
+    api.post(f"/api/findings/{fid}/status", json={"status": "accepted"})
 
     out = write_excel(db, pid, tmp_path / "x.xlsx")
     ws = openpyxl.load_workbook(out)["Findings"]
@@ -177,7 +179,7 @@ def test_the_excel_carries_a_comments_column(api, job, tmp_path):
 
 def test_an_uncommented_finding_exports_an_empty_cell(job, tmp_path):
     db, pid = job
-    _finding(db, pid)
+    _finding(db, pid, status="accepted")
     import csv
     out = write_csv(db, pid, tmp_path / "x.csv")
     with out.open(encoding="utf-8-sig", newline="") as fh:
@@ -250,3 +252,173 @@ def test_clearing_the_comment_leaves_the_decision(api, job):
     assert db.comments(pid)[0]["status"] == "accepted"
     assert db.one("SELECT status FROM finding WHERE id=?",
                   (fid,))["status"] == "accepted"
+
+
+# -- what goes out, and what does not ----------------------------------------
+#
+# "can exceptions that are no issue be excluded from download. they dont need
+# to be send to the person revising documents." The report is a punch list for
+# somebody else to work through; an item the auditor has already checked and
+# cleared is not work for them, and every row of it costs the ones that matter
+# some attention.
+
+
+def _read_csv(path):
+    import csv
+    with path.open(encoding="utf-8-sig", newline="") as fh:
+        return list(csv.reader(fh))
+
+
+def test_a_no_issue_finding_is_left_out_of_the_csv(api, job, tmp_path):
+    db, pid = job
+    _finding(db, pid, rule="MTR-02", subject="Kandal", status="accepted")
+    drop = _finding(db, pid, rule="AB-07", subject="42+72")
+    api.post(f"/api/findings/{drop}/status", json={"status": "dismissed"})
+
+    rows = _read_csv(write_csv(db, pid, tmp_path / "x.csv"))
+    subjects = [r[3] for r in rows[1:]]
+    assert subjects == ["Kandal"]
+
+
+def test_a_no_issue_finding_is_left_out_of_the_excel(api, job, tmp_path):
+    import openpyxl
+
+    db, pid = job
+    _finding(db, pid, rule="MTR-02", subject="Kandal", status="accepted")
+    drop = _finding(db, pid, rule="AB-07", subject="42+72")
+    api.post(f"/api/findings/{drop}/status", json={"status": "dismissed"})
+
+    ws = openpyxl.load_workbook(write_excel(db, pid, tmp_path / "x.xlsx"))["Findings"]
+    assert [ws.cell(row=r, column=4).value for r in range(2, ws.max_row + 1)] == ["Kandal"]
+
+
+def test_a_confirmed_issue_still_goes_out(api, job, tmp_path):
+    """Marking something a real exception must not remove it — that is the
+    half of the pair that most needs to reach the contractor."""
+    db, pid = job
+    fid = _finding(db, pid, subject="Kandal")
+    api.post(f"/api/findings/{fid}/status", json={"status": "accepted"})
+    rows = _read_csv(write_csv(db, pid, tmp_path / "x.csv"))
+    assert [r[3] for r in rows[1:]] == ["Kandal"]
+    assert rows[1][8] == "ISSUE"
+
+
+def test_an_unreviewed_finding_is_held_back(job, tmp_path):
+    """Only findings an auditor has confirmed go to the contractor. The cost
+    is a report that is empty until the list has been worked through, which is
+    why the window says how many are being held back before it writes."""
+    db, pid = job
+    _finding(db, pid, subject="Kandal")
+    assert _read_csv(write_csv(db, pid, tmp_path / "x.csv"))[1:] == []
+
+
+def test_marking_it_an_issue_puts_it_in_the_report(api, job, tmp_path):
+    db, pid = job
+    fid = _finding(db, pid, subject="Kandal")
+    api.post(f"/api/findings/{fid}/status", json={"status": "dismissed"})
+    assert _read_csv(write_csv(db, pid, tmp_path / "a.csv"))[1:] == []
+    api.post(f"/api/findings/{fid}/status", json={"status": "open"})
+    assert _read_csv(write_csv(db, pid, tmp_path / "b.csv"))[1:] == [],         "back on the list is not a verdict, so still not in the report"
+    api.post(f"/api/findings/{fid}/status", json={"status": "accepted"})
+    assert [r[3] for r in _read_csv(write_csv(db, pid, tmp_path / "c.csv"))[1:]] == ["Kandal"]
+
+
+def test_it_is_left_out_of_the_file_not_thrown_away(api, job):
+    """The auditor has to be able to show they checked it."""
+    db, pid = job
+    fid = _finding(db, pid, subject="Kandal")
+    api.post(f"/api/findings/{fid}/comment", json={"text": "rang the mill, cert is fine"})
+    api.post(f"/api/findings/{fid}/status", json={"status": "dismissed"})
+
+    still = api.get("/api/findings", params={"project_id": pid, "status": "dismissed"}).json()
+    assert [r["subject"] for r in still["rows"]] == ["Kandal"]
+    assert db.comments(pid)[0]["comment"] == "rang the mill, cert is fine"
+
+
+def test_the_decision_survives_a_re_audit_and_stays_out(api, job, tmp_path):
+    """The case that matters: cleared in the morning, re-audited, and the
+    report that goes out in the afternoon must not have it back."""
+    db, pid = job
+    fid = _finding(db, pid, rule="MTR-02", subject="Kandal")
+    api.post(f"/api/findings/{fid}/status", json={"status": "dismissed"})
+
+    db.clear_findings(pid)                     # what an audit does
+    _finding(db, pid, rule="MTR-02", subject="Kandal", message="reworded rule")
+    db.reattach_comments(pid)
+
+    assert _read_csv(write_csv(db, pid, tmp_path / "x.csv"))[1:] == []
+
+
+# -- the words in the Status column ------------------------------------------
+#
+# The database has called a confirmed exception "accepted" since before the
+# buttons said Issue, and renaming the stored value would discard every
+# decision already taken. So the report translates at the edge, where it is
+# written for somebody who never saw the app.
+
+
+def test_the_status_column_says_ISSUE(api, job, tmp_path):
+    db, pid = job
+    fid = _finding(db, pid, subject="Kandal")
+    api.post(f"/api/findings/{fid}/status", json={"status": "accepted"})
+    rows = _read_csv(write_csv(db, pid, tmp_path / "x.csv"))
+    assert rows[0][8] == "Status"
+    assert rows[1][8] == "ISSUE"
+
+
+def test_the_excel_status_column_says_ISSUE(api, job, tmp_path):
+    import openpyxl
+
+    db, pid = job
+    fid = _finding(db, pid, subject="Kandal")
+    api.post(f"/api/findings/{fid}/status", json={"status": "accepted"})
+    ws = openpyxl.load_workbook(write_excel(db, pid, tmp_path / "x.xlsx"))["Findings"]
+    assert ws.cell(row=1, column=9).value == "Status"
+    assert ws.cell(row=2, column=9).value == "ISSUE"
+
+
+def test_the_stored_value_is_untouched(api, job):
+    """Translated for the report only. Renaming it in the database would
+    throw away every decision already taken."""
+    db, pid = job
+    fid = _finding(db, pid)
+    api.post(f"/api/findings/{fid}/status", json={"status": "accepted"})
+    assert db.one("SELECT status FROM finding WHERE id=?", (fid,))["status"] == "accepted"
+
+
+# -- saying what is being held back ------------------------------------------
+#
+# Only Issues go out, so a report taken before the list has been worked
+# through is empty -- and an empty report reads exactly like a clean package.
+# The window asks before it writes, using these counts.
+
+
+def test_the_scope_counts_what_goes_and_what_stays(api, job):
+    db, pid = job
+    a = _finding(db, pid, rule="MTR-02", subject="Kandal")
+    b = _finding(db, pid, rule="AB-07", subject="42+72")
+    _finding(db, pid, rule="NDE-01", subject="W-14")        # left unreviewed
+    api.post(f"/api/findings/{a}/status", json={"status": "accepted"})
+    api.post(f"/api/findings/{b}/status", json={"status": "dismissed"})
+
+    s = api.get("/api/report-scope", params={"project_id": pid}).json()
+    assert s == {"going_out": 1, "unreviewed": 1, "no_issue": 1}
+
+
+def test_an_untouched_job_reports_an_empty_download(api, job):
+    """The dangerous case, and the reason the prompt exists."""
+    db, pid = job
+    for n in range(5):
+        _finding(db, pid, rule=f"MTR-0{n}", subject=f"s{n}")
+    s = api.get("/api/report-scope", params={"project_id": pid}).json()
+    assert s["going_out"] == 0
+    assert s["unreviewed"] == 5
+
+
+def test_a_fully_worked_job_has_nothing_held_back(api, job):
+    db, pid = job
+    fid = _finding(db, pid)
+    api.post(f"/api/findings/{fid}/status", json={"status": "accepted"})
+    s = api.get("/api/report-scope", params={"project_id": pid}).json()
+    assert s["unreviewed"] == 0
+    assert s["going_out"] == 1

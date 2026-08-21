@@ -90,6 +90,43 @@ AML_PATTERNS = ("AML*.xlsx", "*Approved Material*.xlsx", "AML*.xlsm",
                 "*AML*.pdf", "*Approved Manufacturer*.pdf")
 
 
+def bundled_aml() -> Path | None:
+    """The approved list built into the program, if this build carries one.
+
+    An audit with no list runs every other check and skips the manufacturer
+    approvals — correctly reported as skipped, never as passed, but skipped
+    all the same, and the approval checks are the ones that catch an
+    unapproved mill. That is what happened on a colleague's machine: the list
+    lives beside the *jobs*, and copying the program without it left every
+    approval unchecked.
+
+    So a copy travels inside the exe and is used when the disk holds nothing.
+    It is a floor, not a default: a list found near the job always wins,
+    because that one is the auditor's own choice and this one goes stale. It
+    states its own validity date like any other, so AML-01 says when it has.
+
+    PyInstaller unpacks a one-file build into a temporary directory and points
+    ``sys._MEIPASS`` at it; from source the folder sits in the package.
+    """
+    import sys
+
+    unpacked = getattr(sys, "_MEIPASS", None)
+    folder = (Path(unpacked) / "weldaudit" / "data" if unpacked
+              else Path(__file__).resolve().parent.parent / "data")
+    if not folder.is_dir():
+        return None
+    hits: list[Path] = []
+    for pattern in AML_PATTERNS:
+        hits.extend(folder.glob(pattern))
+    return max(sorted(set(hits)), key=_revision_rank) if hits else None
+
+
+def _is_bundled(book: Path) -> bool:
+    """Whether this list came from inside the program rather than off disk."""
+    inside = bundled_aml()
+    return inside is not None and Path(book).resolve() == inside.resolve()
+
+
 def find_aml_workbook(root: str | Path) -> Path | None:
     """The approved list governing this job: nearest folder, newest revision.
 
@@ -103,6 +140,9 @@ def find_aml_workbook(root: str | Path) -> Path | None:
     quietly used the expired one. Only the PDF states a validity date, so only
     the PDF can be ranked by it; a workbook is undated and is used when there
     is nothing dated to prefer.
+
+    With nothing anywhere above the job, the copy built into the program is
+    used rather than running the audit with no approved list at all.
     """
     root = Path(root).resolve()
     for folder in [root, *root.parents]:
@@ -114,7 +154,7 @@ def find_aml_workbook(root: str | Path) -> Path | None:
         # Do not wander above the user's profile.
         if folder == Path.home():
             break
-    return None
+    return bundled_aml()
 
 
 def _revision_rank(path: Path) -> tuple[int, str]:
@@ -167,7 +207,12 @@ def load_aml(db: Database, project_id: int, root: str | Path,
                  revision=excluded.revision, valid_thru=excluded.valid_thru,
                  entries=excluded.entries""",
             (project_id, str(book),
-             "pdf" if book.suffix.lower() == ".pdf" else "workbook",
+             # Recorded as bundled, not as a pdf, because where the list came
+             # from changes what the report can claim: a copy inside the exe
+             # is whatever was current when the program was built, and the
+             # auditor has to be able to see that at a glance.
+             "bundled" if _is_bundled(book)
+             else "pdf" if book.suffix.lower() == ".pdf" else "workbook",
              revision, valid_thru, len(aml.entries)),
         )
     with db.tx() as c:

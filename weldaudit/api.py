@@ -56,6 +56,10 @@ class CorrectionRequest(BaseModel):
 class AuditRequest(BaseModel):
     name: str | None = None
     root: str
+    #: Exactly these files, when they were picked out of a file dialog rather
+    #: than a folder chosen. They keep their real paths, so files picked out
+    #: of a package are filed under the same sections as the package.
+    paths: list[str] | None = None
 
 
 class StatusUpdate(BaseModel):
@@ -248,8 +252,18 @@ def create_app(db_path: str | Path) -> FastAPI:
 
     @app.post("/api/audit")
     def start_audit(req: AuditRequest) -> dict:
-        root = Path(req.root).expanduser()
-        if not root.is_dir():
+        from .index import chosen_files, common_parent
+
+        picked = chosen_files(req.paths) if req.paths else []
+        if req.paths and not picked:
+            raise HTTPException(
+                400, "None of those files can be audited. WeldAudit reads "
+                     "PDF, Excel, CSV, Word, DWG and text.")
+        # The folder they came out of, so segments and sections are measured
+        # against something real. Choosing every file in a package and
+        # choosing the package come to the same answer.
+        root = common_parent(picked) if picked else Path(req.root).expanduser()
+        if not picked and not root.is_dir():
             raise HTTPException(400, f"Not a folder: {root}")
         if job.running:
             raise HTTPException(409, "An audit is already running")
@@ -261,6 +275,7 @@ def create_app(db_path: str | Path) -> FastAPI:
             try:
                 result = run(
                     db, name, root,
+                    only_files=[str(p) for p in picked] if picked else None,
                     progress=lambda stage, msg: job.set(stage=stage, message=msg),
                 )
                 job.set(project_id=result.project_id, stage="done",
@@ -487,6 +502,26 @@ def create_app(db_path: str | Path) -> FastAPI:
 
     # -- summaries ---------------------------------------------------------
 
+    @app.get("/api/report-scope")
+    def report_scope(project_id: int) -> dict:
+        """What a download would and would not contain, before it is saved.
+
+        The report carries only findings marked Issue. That is what was asked
+        for, and it means a report taken before the list has been worked
+        through comes out empty -- which is indistinguishable from a clean
+        package. So the window asks first, and this is what it asks with.
+        """
+        from .report import reportable, unreviewed
+
+        going = len(reportable(db, project_id))
+        return {
+            "going_out": going,
+            "unreviewed": unreviewed(db, project_id),
+            "no_issue": db.one(
+                "SELECT COUNT(*) AS n FROM finding WHERE project_id=? "
+                "AND status='dismissed'", (project_id,))["n"],
+        }
+
     @app.get("/api/summary")
     def summary(project_id: int) -> dict:
         return {
@@ -500,6 +535,38 @@ def create_app(db_path: str | Path) -> FastAPI:
             "asbuilt": asbuilt_summary(db, project_id),
             "completeness": completeness(db, project_id),
         }
+
+    # -- the approved materials list ----------------------------------------
+
+    @app.get("/api/aml")
+    def aml_lookup(project_id: int, q: str = "", nps: str = "",
+                   category: str = "") -> dict:
+        """Search the list this project was audited against.
+
+        Per project on purpose. The rows are copied in at audit time, so a job
+        run in June is still searchable against the June list after a new one
+        is issued — which is the only honest way to explain a June finding.
+        """
+        from .amlsearch import categories as aml_categories
+        from .amlsearch import search as aml_search
+        from .rules.materials import _aml_from_db
+
+        source = db.one("SELECT * FROM aml_source WHERE project_id=?", (project_id,))
+        aml = _aml_from_db(db, project_id)
+        if aml is None:
+            return {"loaded": False, "verdict": None, "rows": [],
+                    "shown": 0, "total": 0, "categories": [], "source": None}
+
+        out = aml_search(aml, q, nps, category)
+        out["loaded"] = True
+        out["categories"] = aml_categories(aml)
+        out["entries"] = len(aml.entries)
+        out["source"] = dict(source) if source else None
+        if source and source["valid_thru"]:
+            from datetime import date
+
+            out["expired"] = source["valid_thru"] < date.today().isoformat()
+        return out
 
     # -- source documents --------------------------------------------------
 
@@ -583,11 +650,21 @@ def create_app(db_path: str | Path) -> FastAPI:
     def _report_path(project, fmt: str, where: str) -> Path:
         safe = "".join(ch if ch.isalnum() or ch in " -_" else "_"
                        for ch in project["name"])
-        stem = f"{safe} - exceptions.{'csv' if fmt == 'csv' else 'xlsx'}"
+        stem = f"{safe} - exceptions.{fmt if fmt in ('csv', 'pdf') else 'xlsx'}"
         if where == "job":
             # Beside the job it describes, in a folder of its own so a report
             # is never mistaken for one of the contractor's own documents.
             return Path(project["root"]) / "WeldAudit Reports" / stem
+        if where == "downloads":
+            # Written by the program rather than handed to the window to
+            # download. A WebView2 window is not a browser: it has no
+            # downloads folder and no download bar, and on a machine where
+            # that goes wrong the auditor gets a Windows box offering to find
+            # an app in the Store and no file they can point at. Writing it
+            # here and naming the path depends on nothing but the disk.
+            folder = Path.home() / "Downloads"
+            if folder.is_dir():
+                return folder / stem
         return Path.home() / ".weldaudit" / "reports" / stem
 
     @app.get("/api/export")
@@ -602,15 +679,20 @@ def create_app(db_path: str | Path) -> FastAPI:
         project = db.one("SELECT name, root FROM project WHERE id=?", (project_id,))
         if not project:
             raise HTTPException(404, "No such project")
-        if fmt not in ("xlsx", "csv"):
+        if fmt not in ("xlsx", "csv", "pdf"):
             raise HTTPException(400, f"Unknown format: {fmt}")
 
-        write = write_csv if fmt == "csv" else write_excel
+        if fmt == "pdf":
+            from .reportpdf import write_pdf
+
+            write = write_pdf
+        else:
+            write = write_csv if fmt == "csv" else write_excel
         out = _report_path(project, fmt, to)
         try:
             write(db, project_id, out)
         except (OSError, PermissionError) as why:
-            if to != "job":
+            if to == "download":
                 raise HTTPException(500, f"Could not write {out}: {why}") from None
             # A read-only share or a synced folder mid-lock. Say so, and say
             # where it went instead, rather than failing with nothing.
@@ -621,7 +703,7 @@ def create_app(db_path: str | Path) -> FastAPI:
                 "reason": f"{out.parent} could not be written to ({why.__class__.__name__})",
             })
 
-        if to == "job":
+        if to in ("job", "downloads"):
             return JSONResponse({"path": str(out), "saved": True, "fell_back": False})
         return FileResponse(out, filename=out.name)
 
