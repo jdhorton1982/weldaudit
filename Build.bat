@@ -12,6 +12,11 @@ REM
 REM   Build.bat            builds both
 REM   Build.bat file       just the one-file exe
 REM   Build.bat folder     just the folder
+REM   Build.bat installer  the folder, then dist\WeldAudit-Setup.exe
+REM
+REM The installer is per-user: it lands in %LOCALAPPDATA%\Programs\WeldAudit,
+REM raises no UAC prompt, and appears in Settings > Apps like any other
+REM program. It needs Inno Setup 6 (winget install JRSoftware.InnoSetup).
 REM
 REM For whoever maintains WeldAudit, not for the auditors who run it.
 setlocal
@@ -38,6 +43,12 @@ REM A stale build directory is the usual reason a fix does not appear, so it
 REM goes rather than being reused.
 if exist build rmdir /s /q build
 
+REM The version, asked of the program rather than typed here, so the exe, the
+REM installer and any release published from them cannot disagree.
+for /f "delims=" %%V in ('"%PY%" -c "import weldaudit;print(weldaudit.__version__)"') do set VER=%%V
+echo Building WeldAudit %VER%.
+
+if "%WHAT%"=="installer" goto :folder
 if "%WHAT%"=="folder" goto :folder
 
 echo.
@@ -63,11 +74,35 @@ if not exist "dist\WeldAudit\WeldAudit.exe" (
   pause
   exit /b 1
 )
-echo Built dist\WeldAudit\  (folder)
+REM The release's own identity, travelling with the build. The updater reads
+REM this back, so a copy always knows which release it is even if the number
+REM compiled into it says otherwise.
+echo %VER%> "dist\WeldAudit\weldaudit-version.txt"
+echo Built dist\WeldAudit\  (folder, stamped %VER%)
+
+if not "%WHAT%"=="installer" goto :done
+
+set ISCC=%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe
+if not exist "%ISCC%" set ISCC=C:\Program Files (x86)\Inno Setup 6\ISCC.exe
+if not exist "%ISCC%" (
+  echo.
+  echo Inno Setup 6 is not installed, so the installer cannot be built.
+  echo   winget install --id JRSoftware.InnoSetup --scope user
+  goto :fail
+)
+echo.
+echo Building the installer.
+"%ISCC%" /DAppVersion=%VER% "installer\WeldAudit.iss" || goto :fail
+echo Built dist\WeldAudit-Setup.exe
 
 :done
 echo.
 echo Which to hand over:
+echo   dist\WeldAudit-Setup.exe  the ordinary way to give it to somebody. Per
+echo                        user, so no administrator rights and no UAC
+echo                        prompt; it makes the shortcuts and appears in
+echo                        Settings ^> Apps. Removing it never touches the
+echo                        audits and page readings in %%USERPROFILE%%\.weldaudit.
 echo   dist\WeldAudit.exe   one file to copy. Slow to start — it unpacks
 echo                        itself into %%TEMP%% on every launch — and that
 echo                        self-extracting behaviour is what antivirus

@@ -87,6 +87,33 @@ def cmd_projects(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_release(args) -> int:
+    """Package a build into a shared folder for every other copy to pick up.
+
+    The publishing half of the updater, and the only part a person runs. The
+    archive and the version file are written together on purpose: a
+    version.json that disagrees with its archive is a broken update on
+    somebody else's machine, discovered by them.
+    """
+    from .update import current_version, publish
+
+    build = Path(args.build)
+    if not build.exists():
+        print(f"No build at {build}. Run Build.bat first.", file=sys.stderr)
+        return 1
+
+    version = args.version or current_version()
+    archive = publish(build, args.to, version, notes=args.notes or "")
+    size = archive.stat().st_size / (1024 * 1024)
+    print(f"WeldAudit {version} published to {args.to}")
+    print(f"  {archive.name}  ({size:,.0f} MB)")
+    print()
+    print("Share that folder with whoever runs WeldAudit. Their copy reads it")
+    print("on startup and offers the update; nothing is downloaded from the")
+    print("internet and no password is needed.")
+    return 0
+
+
 def cmd_cache(args) -> int:
     """Move page readings between machines.
 
@@ -531,6 +558,17 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("summary", help="coverage summary for an audited project")
     s.add_argument("name")
     s.set_defaults(func=cmd_summary)
+
+    r = sub.add_parser("release",
+                       help="publish a build to a shared folder for auto-update")
+    r.add_argument("--build", default="dist/WeldAudit",
+                   help="the folder build to package (default: dist/WeldAudit)")
+    r.add_argument("--to", required=True, metavar="FOLDER",
+                   help=r'the shared release folder, e.g. '
+                        r'"%%USERPROFILE%%\OneDrive\WeldAudit Release"')
+    r.add_argument("--version", help="version number (default: the program's own)")
+    r.add_argument("--notes", help="one line on what changed, shown to the user")
+    r.set_defaults(func=cmd_release)
 
     q = sub.add_parser("cache", help="move page readings between machines")
     q.add_argument("action", choices=("export", "import"))

@@ -502,6 +502,65 @@ def create_app(db_path: str | Path) -> FastAPI:
 
     # -- summaries ---------------------------------------------------------
 
+    @app.get("/api/update")
+    def update_offer() -> dict:
+        """Whether a newer build is sitting in the shared folder.
+
+        A local file read, not a network call: the folder is one OneDrive (or
+        a share, or a stick) has already synced. So this is cheap enough to
+        ask on every startup and costs nothing when there is nothing to say.
+        """
+        from .update import available, current_version, install_dir
+
+        offered = available()
+        return {
+            "running": current_version(),
+            "version": offered.version if offered else None,
+            "notes": offered.notes if offered else "",
+            "from": str(offered.folder) if offered else "",
+            # A one-file build has no folder to swap, so the offer is worth
+            # showing but the button is not.
+            "can_apply": install_dir() is not None,
+        }
+
+    @app.post("/api/update")
+    def update_apply() -> dict:
+        from .update import NotWhatItSaid, apply, available
+
+        offered = available()
+        if offered is None:
+            raise HTTPException(409, "There is no update to install.")
+        try:
+            message = apply(offered)
+        except NotWhatItSaid as why:
+            raise HTTPException(400, str(why)) from None
+
+        # And now get out of the way. The swap waiting outside cannot rename a
+        # folder this process is running from, so staying alive would mean the
+        # update silently never happened — which is how it behaved the first
+        # time it was tried. The delay is for this reply to reach the window.
+        def bow_out() -> None:
+            import os
+            import time
+
+            time.sleep(1.5)
+            try:
+                import webview
+
+                for window in list(webview.windows):
+                    window.destroy()
+            except Exception:         # noqa: BLE001 - no window; exit anyway
+                pass
+            time.sleep(0.5)
+            # Abrupt on purpose. Nothing here is mid-write that matters — the
+            # database is WAL and recovers — and a clean shutdown through
+            # uvicorn from inside one of its own request handlers is not
+            # reliable enough to bet an update on.
+            os._exit(0)
+
+        threading.Thread(target=bow_out, daemon=True).start()
+        return {"applied": True, "message": message}
+
     @app.get("/api/report-scope")
     def report_scope(project_id: int) -> dict:
         """What a download would and would not contain, before it is saved.

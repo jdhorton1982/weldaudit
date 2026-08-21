@@ -239,7 +239,13 @@
             padding: 10px 18px; background: var(--panel);
             border-bottom: 1px solid var(--major); color: var(--ink);
             font-size: 13px; }
-  #notice[hidden] { display: none; }
+  #update-notice { display: flex; align-items: center; gap: 12px; flex: none;
+            padding: 10px 18px; background: var(--panel);
+            border-bottom: 1px solid var(--ok); color: var(--ink);
+            font-size: 13px; }
+  #update-notice[hidden], #notice[hidden] { display: none; }
+  #update-notice span { flex: 1; }
+  #update-notice button { flex: none; padding: 4px 12px; font-size: 13px; }
   #notice span { flex: 1; }
   #notice button { flex: none; padding: 4px 12px; font-size: 13px; }
 .sheet{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;
@@ -362,6 +368,12 @@
       <button id="jobs-close">Close</button>
     </div>
   </div>
+</div>
+
+<div id="update-notice" hidden>
+  <span id="update-text"></span>
+  <button id="update-do" class="primary">Update now</button>
+  <button id="update-hide">Later</button>
 </div>
 
 <div id="notice" hidden>
@@ -1448,6 +1460,36 @@ async function offerTheReadings() {
   bar.hidden = false;
 }
 offerTheReadings();
+
+// A newer build sitting in the shared folder. This is a local file read --
+// the folder is one OneDrive or a share has already synced -- so it costs
+// nothing to ask on every start, and there is no server and no password.
+async function offerTheUpdate() {
+  let r;
+  try { r = await api('/api/update'); } catch { return; }
+  if (!r.version) return;
+  $('#update-text').innerHTML =
+    `WeldAudit <b>${esc(r.version)}</b> is available`
+    + (r.notes ? ` — ${esc(r.notes)}` : '')
+    + `. You are running ${esc(r.running)}.`
+    + (r.can_apply ? '' : ` This copy cannot update itself; take the new build `
+                        + `from ${esc(r.from)}.`);
+  $('#update-do').hidden = !r.can_apply;
+  $('#update-do').onclick = async () => {
+    $('#update-do').disabled = true;
+    try {
+      const got = await api('/api/update', { method: 'POST' });
+      $('#update-text').textContent = got.message;
+      $('#update-hide').hidden = true;
+    } catch (e) {
+      toast('Could not update: ' + e.message);
+      $('#update-do').disabled = false;
+    }
+  };
+  $('#update-hide').onclick = () => { $('#update-notice').hidden = true; };
+  $('#update-notice').hidden = false;
+}
+offerTheUpdate();
 
 // ---------------------------------------------------------------------------
 // The mark, asking something
