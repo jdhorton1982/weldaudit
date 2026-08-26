@@ -39,6 +39,10 @@ REGISTER_OF: dict[str, str] = {
     "weld_map_text": "the weld map",
     "weld_map_vision": "the weld map",
     "weld_log_csv": "the weld log export",
+    # A WeldTrace download is a register in its own right, and a job can
+    # carry one alongside a scanned one: the same segment described twice,
+    # which is exactly what REG-01 and REG-03 exist to reconcile.
+    "weldtrace": "the WeldTrace register",
 }
 
 

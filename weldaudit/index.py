@@ -27,8 +27,12 @@ SKIP_DIRS = {
 #: Extensions worth recording.
 KEEP_EXT = {".pdf", ".xlsx", ".xls", ".xlsm", ".csv", ".docx", ".doc", ".dwg", ".txt"}
 
-#: Junk that Windows/OneDrive leaves behind.
-SKIP_FILES = {"thumbs.db", "desktop.ini", ".ds_store"}
+#: Junk that Windows/OneDrive leaves behind, plus the note that travels with
+#: a WeldTrace download and with the shared release folder. "READ ME FIRST"
+#: describes how WeldAudit updates itself; indexed as project evidence it is a
+#: stray text file in section 22 that nothing reads, and it is one of the
+#: things that makes the release folder look like a job folder.
+SKIP_FILES = {"thumbs.db", "desktop.ini", ".ds_store", "read me first.txt"}
 
 
 def is_junk(name: str) -> bool:
@@ -173,7 +177,8 @@ def index_project(
                       "nde_tech", "aml_entry",
                       "hydrotest", "instrument_cal", "coating_report",
                       "flange", "flange_map", "procedure", "welder_roster", "backfill_release",
-                      "asbuilt_joint"):
+                      "asbuilt_joint", "weldtrace_exam", "weldtrace_weld",
+                      "weldtrace_heat", "weldtrace_stamp"):
             c.execute(f"DELETE FROM {table} WHERE project_id=?", (project_id,))
         c.execute("DELETE FROM document WHERE project_id=?", (project_id,))
 

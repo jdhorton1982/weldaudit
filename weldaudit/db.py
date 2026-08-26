@@ -67,6 +67,12 @@ CREATE TABLE IF NOT EXISTS weld (
     -- column exists for the day a report layout carries it. See WLD-12.
     position      TEXT,
     wps           TEXT,
+    -- The revision of that procedure, where the register states one. A
+    -- WeldTrace export fuses the two into `XTO-ASME-P1-HYP-NACE-0`; split
+    -- here rather than left fused in `wps`, so a weld still resolves against
+    -- the same filed procedure as a certificate that omits the revision.
+    -- Blank means the record did not say, which is not the same as revision 0.
+    wps_revision  TEXT,
     welder_root   TEXT,
     welder_hp     TEXT,
     welder_fill   TEXT,
@@ -386,6 +392,119 @@ CREATE TABLE IF NOT EXISTS asbuilt_joint (
 CREATE INDEX IF NOT EXISTS ix_asbuilt ON asbuilt_joint(project_id, segment);
 CREATE INDEX IF NOT EXISTS ix_asbuilt_nde ON asbuilt_joint(project_id, nde_id);
 
+-- One weld stamped on an isometric, read out of a WeldTrace annotation
+-- export. This is the as-built for a facility job: no survey station, because
+-- the pipe is on a pad rather than in a ditch, but the same question - is the
+-- weld the register claims actually drawn on a sheet, and is every weld on a
+-- sheet in the register. Kept apart from `asbuilt_joint` deliberately: the
+-- rules there measure joints against released stretches of ditch by station,
+-- and a table of station-less rows would answer those questions with silence
+-- rather than with "not applicable".
+CREATE TABLE IF NOT EXISTS weldtrace_stamp (
+    id          INTEGER PRIMARY KEY,
+    project_id  INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+    document_id INTEGER REFERENCES document(id),
+    segment     TEXT,
+    drawing     TEXT,
+    revision    TEXT,
+    weld_tag    TEXT,              -- normalised, e.g. FW-104
+    raw_tag     TEXT,              -- as stamped, e.g. AFW-104P
+    welder      TEXT,
+    stamp_date  TEXT,
+    page_no     INTEGER,
+    source      TEXT,              -- 'weldtrace_pdf' | 'weldtrace_csv'
+    -- The register weld this stamp was matched to, blank where none was.
+    -- The match is made once, in the extractor that already holds both sides,
+    -- so that WT-08 can ask for the stamps nothing claims with a WHERE rather
+    -- than by running the tag-variant matching a second time and differently.
+    matched_weld_no TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_wt_stamp ON weldtrace_stamp(project_id, weld_tag);
+
+-- One weld as a WeldTrace register has it. `weld` carries what every weld
+-- register in this corpus has in common, and that is where a WeldTrace weld
+-- goes so the existing rules and tabs can read it. This carries the rest -
+-- the test pack it belongs to, the reference number that pack was issued
+-- under, the date it was planned for, the material code on each end - so the
+-- rules can ask about those without opening the export a second time.
+CREATE TABLE IF NOT EXISTS weldtrace_weld (
+    id             INTEGER PRIMARY KEY,
+    project_id     INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+    document_id    INTEGER REFERENCES document(id),
+    weld_id        INTEGER REFERENCES weld(id),
+    segment        TEXT,
+    test_pack      TEXT,
+    pack_reference TEXT,
+    weld_no        TEXT,           -- as written in the register
+    weld_tag       TEXT,           -- normalised, for matching the drawings
+    drawing        TEXT,
+    revision       TEXT,
+    category       TEXT,           -- Shop / Field
+    joint_type     TEXT,
+    weld_size      TEXT,
+    line           TEXT,
+    line_class     TEXT,
+    wps            TEXT,
+    wps_revision   TEXT,
+    date_planned   TEXT,
+    date_welded    TEXT,
+    material_1     TEXT,
+    heat_1         TEXT,
+    material_2     TEXT,
+    heat_2         TEXT,
+    welders        TEXT,           -- every stencil on the joint, '; ' joined
+    passes_unmanned TEXT,          -- the passes with no welder recorded
+    test_result    TEXT,
+    penalty        TEXT,
+    stamps         INTEGER,        -- how many sheets stamp this weld
+    stamped_on     TEXT            -- the drawings that do, '; ' joined
+);
+CREATE INDEX IF NOT EXISTS ix_wt_weld ON weldtrace_weld(project_id, weld_tag);
+
+-- One examination block on a WeldTrace weld. The export carries eight of
+-- them per row - VI, RT, UT, MT, PT, FT, PMI, BT - each with its own request,
+-- verdict, report number and retest, which is more than the one nde_* set of
+-- columns on `weld` can hold.
+CREATE TABLE IF NOT EXISTS weldtrace_exam (
+    id               INTEGER PRIMARY KEY,
+    project_id       INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+    weldtrace_weld_id INTEGER REFERENCES weldtrace_weld(id),
+    method           TEXT,
+    -- 1 requested, 0 not, NULL where the export has no request column at all
+    -- and only a result says whether the method was wanted.
+    requested        INTEGER,
+    verdict          TEXT,
+    report           TEXT,
+    report_rev       TEXT,
+    exam_date        TEXT,
+    retest_requested INTEGER,
+    retest_verdict   TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_wt_exam ON weldtrace_exam(project_id, method);
+
+-- One heat as the WeldTrace material register has it. The fields the
+-- approved-manufacturer check needs - supplier, spec, grade, P-number - are
+-- optional in WeldTrace and blank on every heat of the first download seen,
+-- which is a finding in itself rather than something to paper over.
+CREATE TABLE IF NOT EXISTS weldtrace_heat (
+    id            INTEGER PRIMARY KEY,
+    project_id    INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+    document_id   INTEGER REFERENCES document(id),
+    segment       TEXT,
+    heat          TEXT,
+    heat_key      TEXT,
+    material_name TEXT,
+    product_form  TEXT,
+    fitting_type  TEXT,
+    supplier      TEXT,
+    spec_no       TEXT,
+    grade         TEXT,
+    p_no          TEXT,
+    mtr_file      TEXT,            -- the MTR document the register points at
+    status        TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_wt_heat ON weldtrace_heat(project_id, heat_key);
+
 -- One RELEASE FOR BACKFILL: the hold point before the ditch closes over a
 -- measured length of line. The form asserts that all weld and heat map data
 -- is captured and all NDE cleared, which is checkable against both.
@@ -615,6 +734,12 @@ CREATE TABLE IF NOT EXISTS material (
     segment      TEXT,
     heat         TEXT,             -- as written on the source
     heat_key     TEXT,             -- punctuation-free, for joining
+    -- The heat printed on the certificate itself, kept separately from the
+    -- one in its filename so the two can be compared. A filename is typed by
+    -- whoever filed the document and can name the wrong heat; when that
+    -- happens the material is credited to a melt it did not come from, and
+    -- nothing else in the audit would notice. See MTR-09.
+    page_heat    TEXT,
     manufacturer TEXT,             -- best available: mill if known, else issuer
     -- A certificate's letterhead is often a distributor or a machine shop
     -- rather than the works that made the material. Both are kept so a finding

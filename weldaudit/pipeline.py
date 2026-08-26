@@ -16,7 +16,7 @@ from .extract import (
     readings,
     readersheets, roster,
     vision_pass,
-    weldlog_csv, weldmaps, welders, wps,
+    weldlog_csv, weldmaps, welders, weldtrace, wps,
 )
 from .index import IndexStats, completeness, index_project
 from .rules.nde_coverage import coverage_summary
@@ -83,6 +83,21 @@ def run(
     say("extract", "Reading weld log exports")
     files, welds = weldlog_csv.extract(db, project_id)
     counts["csv_files"], counts["csv_welds"] = files, welds
+
+    # Here rather than later, and the ordering carries two decisions. A
+    # WeldTrace download is typed, so it belongs with the other cheap readers
+    # and ahead of anything that opens a scan. And it writes welds, heats and
+    # materials into the shared tables, so it has to land before the welder,
+    # material and AML extractors that read those tables back - a WeldTrace
+    # job then reaches them indistinguishable from a spreadsheet one.
+    say("extract", "Reading WeldTrace exports")
+    found = weldtrace.extract(db, project_id)
+    counts.update(found)
+    if found["weldtrace_files"]:
+        say("extract", f"{found['weldtrace_welds']:,} welds, "
+                       f"{found['weldtrace_heats']:,} heats and "
+                       f"{found['weldtrace_stamps']:,} as-built stamps, "
+                       f"read without a scan")
 
     # Most isometrics were plotted from CAD rather than scanned, so their weld
     # and heat callouts are text. On Kestrel 8 this is the only weld register

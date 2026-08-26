@@ -1328,7 +1328,8 @@ def coverage_summary(db: Database, project_id: int) -> list[dict]:
     ids_by_segment: dict[str, set[str]] = defaultdict(set)
 
     for r in db.q(
-        """SELECT segment, source, nde_id FROM weld WHERE project_id=?""",
+        """SELECT segment, source, nde_id, nde_report FROM weld
+           WHERE project_id=?""",
         (project_id,),
     ):
         segment = r["segment"] or ""
@@ -1336,8 +1337,18 @@ def coverage_summary(db: Database, project_id: int) -> list[dict]:
         entry = per_register[segment].setdefault(
             name, {"register": name, "welds": 0, "welds_with_nde": 0})
         entry["welds"] += 1
-        if r["nde_id"]:
+        # A weld cites its examination in `nde_id` where the reference is an
+        # NdeId and in `nde_report` where it is not - a WeldTrace register
+        # cites `CQ-20260331RT01`, which has neither series nor sequence and
+        # is deliberately kept out of `nde_id`. Counting only the ids would
+        # report a fully examined test pack at 0% referenced, which is the one
+        # kind of wrong answer this figure must never give.
+        if r["nde_id"] or r["nde_report"]:
             entry["welds_with_nde"] += 1
+        # Only NdeIds go in the deduplication set. Report numbers from a
+        # different scheme are not comparable with them and would inflate a
+        # distinct-weld count that exists to avoid double counting.
+        if r["nde_id"]:
             ids_by_segment[segment].add(r["nde_id"])
 
     shots: dict[str, int] = defaultdict(int)
@@ -1363,7 +1374,12 @@ def coverage_summary(db: Database, project_id: int) -> list[dict]:
         else:
             welds = max(len(ids_by_segment[segment]),
                         max(b["welds"] for b in breakdown))
-            with_nde = len(ids_by_segment[segment])
+            # Same shape as the line above, and for the same reason: a
+            # register whose citations are not NdeIds contributes nothing to
+            # the deduplicated set, so the largest single register is the
+            # floor below which this estimate is certainly wrong.
+            with_nde = max(len(ids_by_segment[segment]),
+                           max(b["welds_with_nde"] for b in breakdown))
         out.append(
             {
                 "segment": segment,

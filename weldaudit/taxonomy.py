@@ -28,21 +28,35 @@ class Section:
 SECTIONS: tuple[Section, ...] = (
     Section(1, "Scope of Work", ("scope of work", "rfq")),
     Section(2, "Alignment Sheets", ("alignment sheet",)),
-    Section(3, "As-Built", ("as.?built",)),
+    # A WeldTrace download files its signed drawing set as
+    # "TEST 1 - ISOS AND PIDS.pdf". That is the as-built on a facility job,
+    # and without the pattern every such package reports section 3 missing.
+    Section(3, "As-Built", ("as.?built", r"isos? and p ?&? ?ids?",
+                            r"annotation ?attachments", r"annotations ?export")),
     Section(4, "Job Specs", ("job spec",)),
     Section(5, "Permits", ("permit",)),
     Section(6, "Bill of Ladings", ("bill of lading", r"\bbols?\b")),
     Section(7, "MTRs", (r"\bmtrs?\b", "material test")),
     Section(8, "Valve Documents", ("valve doc", "valve document")),
     Section(9, "Inspector Documents", ("inspector doc",)),
-    Section(10, "Welding", ("welding", "weld report")),
+    # A WeldTrace weld register is the weld report on a job that keeps no
+    # paper one, so it fills section 10 the way the daily reports do. The
+    # materials export is deliberately *not* mapped to section 7: it names the
+    # MTRs rather than being them, and counting it would hide a package whose
+    # certificates were never filed.
+    Section(10, "Welding", ("welding", "weld report",
+                            r"test ?pack ?export", r"welds ?export")),
     Section(11, "NDE", (r"\bnde\b",)),
     Section(12, "Shop Fab Package", ("shop fab",)),
     Section(13, "Corrosion Requirement", ("corrosion",)),
     Section(14, "Bore Profiles", ("bore profile",), required=False),
     Section(15, "Foreign Line Crossing", ("foreign line",), required=False),
     Section(16, "One Calls", ("one call",), required=False),
-    Section(17, "Hydro Test Packet", ("hydro",)),
+    # The WeldTrace test plan is QAQC-FRM-4347, and it carries the required
+    # pressures, hold times and the approval block - the hydro packet by
+    # another name. Matched on the form number and on "test plan" rather than
+    # on "test pack", which would swallow the weld register export as well.
+    Section(17, "Hydro Test Packet", ("hydro", "test plan", "qaqc.?frm.?4347")),
     Section(18, "Flange Map", ("flange map",)),
     Section(19, "Coating", ("coating",)),
     Section(20, "Backfill Release Form", ("backfill",)),
@@ -63,6 +77,17 @@ _LEADING_NUMBER = re.compile(r"(?:^|[\\/])0*(\d{1,2})[\s\-_]+([a-z])")
 
 #: ``(kind, regex)`` tested against the normalised path, most specific first.
 KIND_RULES: tuple[tuple[str, str], ...] = (
+    # A WeldTrace download, first: its exports are named for the report that
+    # produced them rather than for what they contain, so `weldsExport.csv`
+    # would otherwise be filed as a weld map and read by the generic CSV
+    # extractor, which knows nothing about its NDE blocks, its second heat or
+    # its test packs. The two attached PDFs are stored rather than parsed -
+    # the drawing set is signed, and rewriting a signed PDF breaks the seal.
+    ("weldtrace_welds", r"test ?pack ?export|welds ?export"),
+    ("weldtrace_materials", r"(project)?materials ?export"),
+    ("weldtrace_stamps", r"annotation ?attachments|annotations ?export"),
+    ("weldtrace_test_plan", r"test plan|qaqc.?frm.?4347"),
+    ("weldtrace_isos", r"isos? and p ?&? ?ids?"),
     ("nde_reader_sheet", r"reader sheet"),
     ("nde_tech_cert", r"nde certs?|tech certs?"),
     ("nde_procedure", r"\bnde\b.*procedures?|procedures?.*\bnde\b|individual procedures?|company procedures?"),

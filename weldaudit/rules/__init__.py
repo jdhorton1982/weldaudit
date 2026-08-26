@@ -61,7 +61,7 @@ def sort_findings(findings: list[Finding]) -> list[Finding]:
 
 from . import (  # noqa: E402,F401  (importing registers the rules)
     asbuilt, backfill, coating, flanges, hydrotest, materials, nde_coverage,
-    ndetech, registers, review, roster, scope, welders, wps,
+    ndetech, registers, review, roster, scope, welders, weldtrace, wps,
 )
 
 __all__ = ["register", "registry", "run_all", "sort_findings", "Finding", "Rule"]
