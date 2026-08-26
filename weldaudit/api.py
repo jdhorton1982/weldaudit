@@ -15,7 +15,9 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import (
+    FileResponse, HTMLResponse, JSONResponse, PlainTextResponse,
+)
 from pydantic import BaseModel
 
 from .db import Database
@@ -68,6 +70,23 @@ class CorrectionRequest(BaseModel):
     field: str = "manufacturer"
     value: str | None = None
     note: str = ""
+
+
+class Acceptance(BaseModel):
+    """One person saying yes to one document.
+
+    At module level rather than inside ``create_app``, and it has to be:
+    this file uses ``from __future__ import annotations``, so FastAPI resolves
+    ``req: Acceptance`` against the module's globals. Declared in a function
+    it is invisible there, and the body is silently read as a query parameter
+    instead - a 422 that says "field required" about a field that was sent.
+    """
+
+    document_key: str
+    sha256: str
+    name: str
+    company: str = ""
+    email: str = ""
 
 
 class AuditRequest(BaseModel):
@@ -269,7 +288,20 @@ def create_app(db_path: str | Path) -> FastAPI:
 
     @app.post("/api/audit")
     def start_audit(req: AuditRequest) -> dict:
+        from . import agreements
         from .index import chosen_files, common_parent
+
+        # Before anything is read. An audit opens a customer's whole turnover
+        # package, and that is exactly the thing the agreements are about, so
+        # the gate belongs here rather than at the door of the window: it
+        # cannot be got round by leaving the program open from yesterday.
+        if waiting := agreements.outstanding(db):
+            raise HTTPException(409, {
+                "reason": "agreement",
+                "message": "There are terms to read before an audit can run: "
+                           + ", ".join(d.title for d in waiting) + ".",
+                "documents": [d.key for d in waiting],
+            })
 
         picked = chosen_files(req.paths) if req.paths else []
         if req.paths and not picked:
@@ -647,6 +679,62 @@ def create_app(db_path: str | Path) -> FastAPI:
 
             out["expired"] = source["valid_thru"] < date.today().isoformat()
         return out
+
+    # -- what has to be agreed to ------------------------------------------
+
+    @app.get("/api/agreements")
+    def agreements_list() -> dict:
+        """Every document this build carries, and whether it still needs a yes."""
+        from . import agreements
+
+        waiting = {d.key for d in agreements.outstanding(db)}
+        return {
+            "armed": agreements.gate_is_armed(),
+            "outstanding": sorted(waiting),
+            "documents": [
+                {"key": d.key, "title": d.title, "body": d.body,
+                 "sha256": d.sha256, "version": d.version, "words": d.words,
+                 "accepted": d.key not in waiting}
+                for d in agreements.documents()
+            ],
+        }
+
+    @app.post("/api/agreements/accept")
+    def agreements_accept(req: Acceptance) -> dict:
+        """Record that a named person accepted one document, as it reads now.
+
+        The hash comes back from the page and is checked rather than trusted:
+        it is what proves the text recorded is the text that was on screen,
+        and a stale page offering an old wording must not be able to record
+        agreement to it.
+        """
+        from . import agreements
+
+        found = next((d for d in agreements.documents()
+                      if d.key == req.document_key), None)
+        if found is None:
+            raise HTTPException(404, f"No such document: {req.document_key}")
+        if found.sha256 != req.sha256:
+            raise HTTPException(
+                409, "That document has changed since it was put on screen. "
+                     "It has been reloaded; please read it again.")
+        try:
+            agreements.record(db, found, req.name, req.company, req.email)
+        except ValueError as bad:
+            raise HTTPException(400, str(bad)) from None
+
+        waiting = [d.key for d in agreements.outstanding(db)]
+        return {"recorded": found.key, "outstanding": waiting}
+
+    @app.get("/api/agreements/record")
+    def agreements_record() -> PlainTextResponse:
+        """The acceptances on this machine, as text somebody can send on."""
+        from . import agreements
+
+        return PlainTextResponse(
+            agreements.record_as_text(db),
+            headers={"Content-Disposition":
+                     'attachment; filename="weldaudit-agreement-record.txt"'})
 
     # -- source documents --------------------------------------------------
 

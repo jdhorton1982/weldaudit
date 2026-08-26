@@ -102,6 +102,43 @@
   /* Printing a report should not print whatever certificate happens to be
      open beside it. */
   @media print { #viewer { display: none; } }
+
+  /* The agreements. Covering, and with no way past but through: an audit
+     opens somebody else's package, and the terms are the condition of it. */
+  #agree {
+    position: fixed; inset: 0; z-index: 60; background: var(--bg);
+    display: flex; justify-content: center; padding: 24px 18px;
+  }
+  #agree[hidden] { display: none; }
+  #agree .sheet {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    width: 100%; max-width: 860px; display: flex; flex-direction: column;
+    min-height: 0;
+  }
+  #agree h2 { margin: 0; font-size: 15px; font-weight: 600; }
+  #agree .head { padding: 14px 20px; border-bottom: 1px solid var(--line); flex: none; }
+  #agree .head small { display: block; color: var(--muted); font-size: 12px;
+                       margin-top: 3px; }
+  #agree .steps { display: flex; gap: 6px; padding: 10px 20px; flex-wrap: wrap;
+                  border-bottom: 1px solid var(--line); flex: none; }
+  #agree .step { font-size: 11px; text-transform: uppercase; letter-spacing: .5px;
+                 color: var(--muted); border: 1px solid var(--line);
+                 border-radius: 999px; padding: 2px 10px; }
+  #agree .step.on { color: #fff; background: var(--accent); border-color: var(--accent); }
+  #agree .step.done { color: var(--ok); border-color: var(--ok); }
+  #agree .body {
+    flex: 1 1 auto; min-height: 0; overflow: auto; padding: 18px 22px;
+    white-space: pre-wrap; font-size: 13px; line-height: 1.65;
+    border-bottom: 1px solid var(--line);
+  }
+  #agree .foot { padding: 14px 20px; display: flex; flex-direction: column;
+                 gap: 10px; flex: none; }
+  #agree .fields { display: flex; gap: 10px; flex-wrap: wrap; }
+  #agree .fields input { flex: 1 1 180px; }
+  #agree .accept { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  #agree .accept label { font-size: 13px; flex: 1 1 auto; }
+  #agree .note { font-size: 11px; color: var(--muted); }
+  #agree .version { font-family: ui-monospace, Consolas, monospace; }
   /* min-height:0 on every link of the chain: a flex item defaults to
      min-height:auto, which refuses to shrink below its content, and one
      missing link lets the table push the pane past the bottom of the window
@@ -512,6 +549,36 @@
 </aside>
 </div>
 
+<!-- Read before anything is audited. Rendered from /api/agreements so the
+     wording on screen is the wording in the build, and the checksum recorded
+     is the checksum of what was actually read. -->
+<div id="agree" hidden>
+  <div class="sheet">
+    <div class="head">
+      <h2 id="agree-title">Before you audit anything</h2>
+      <small id="agree-sub"></small>
+    </div>
+    <div class="steps" id="agree-steps"></div>
+    <div class="body" id="agree-body"></div>
+    <div class="foot">
+      <div class="fields">
+        <input id="agree-name" placeholder="Your full name" autocomplete="name">
+        <input id="agree-company" placeholder="Company" autocomplete="organization">
+        <input id="agree-email" placeholder="Email (optional)" autocomplete="email">
+      </div>
+      <div class="accept">
+        <input type="checkbox" id="agree-read" style="width:16px;height:16px;flex:none">
+        <label for="agree-read" id="agree-read-label"></label>
+        <button class="primary" id="agree-go" disabled>Agree and continue</button>
+      </div>
+      <div class="note">
+        Recorded on this machine only — nothing is sent anywhere.
+        <span id="agree-version" class="version"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <!-- The mark, animated, asking something. Bottom-right, above the table and
@@ -831,6 +898,88 @@ async function loadFindings() {
           ${r.document_id ? `<button onclick="correct(${r.document_id})"
              title="Open the page, read the manufacturer, and enter it">✎</button>` : ''}
         </td></tr>`).join('') + '</tbody>';
+}
+
+// ── the agreements ─────────────────────────────────────────────────────────
+//
+// Shown one at a time, in the order the build lists them, and each one
+// recorded on its own. The checksum of the text on screen goes back with the
+// acceptance and is checked there, so a page left open across an update
+// cannot record agreement to wording that has since changed.
+//
+// The scroll is not policed. Requiring somebody to reach the bottom of four
+// thousand words produces scrolling, not reading, and a record that says they
+// scrolled is worth no more than one that says they clicked.
+
+let agreeQueue = [];
+
+async function checkAgreements() {
+  let said;
+  try {
+    said = await fetch('/api/agreements').then(r => r.json());
+  } catch { return true; }          // cannot ask: do not lock anyone out
+  if (!said.armed) return true;     // a build carrying no documents
+
+  agreeQueue = said.documents.filter(d => !d.accepted);
+  if (!agreeQueue.length) { $('#agree').hidden = true; return true; }
+  showAgreement(said.documents);
+  return false;
+}
+
+function showAgreement(all) {
+  const doc = agreeQueue[0];
+  const done = all.length - agreeQueue.length;
+
+  $('#agree-steps').innerHTML = all.map((d, i) => {
+    const cls = d.key === doc.key ? 'on' : (i < done || d.accepted ? 'done' : '');
+    return `<span class="step ${cls}">${esc(d.title)}</span>`;
+  }).join('');
+
+  $('#agree-title').textContent = doc.title;
+  $('#agree-sub').textContent =
+    `${doc.words.toLocaleString()} words · document ${done + 1} of ${all.length}`
+    + ' · an audit reads a customer package, and these are the terms of doing that.';
+  $('#agree-body').textContent = doc.body;
+  $('#agree-body').scrollTop = 0;
+  $('#agree-read-label').textContent = `I have read the ${doc.title.toLowerCase()} and I agree to it.`;
+  $('#agree-version').textContent = `wording ${doc.version}`;
+
+  const box = $('#agree-read'), go = $('#agree-go'), name = $('#agree-name');
+  box.checked = false;
+  const ready = () => { go.disabled = !(box.checked && name.value.trim()); };
+  box.onchange = ready;
+  name.oninput = ready;
+  ready();
+
+  go.onclick = async () => {
+    go.disabled = true;
+    try {
+      const said = await fetch('/api/agreements/accept', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          document_key: doc.key, sha256: doc.sha256,
+          name: name.value.trim(), company: $('#agree-company').value.trim(),
+          email: $('#agree-email').value.trim(),
+        }),
+      });
+      if (!said.ok) {
+        const why = await said.json().catch(() => ({}));
+        toast(why.detail || 'That could not be recorded.');
+        // The text moved under us; start again from what the build says now.
+        await checkAgreements();
+        return;
+      }
+      agreeQueue.shift();
+      if (agreeQueue.length) { showAgreement(all); }
+      else { $('#agree').hidden = true; toast('Recorded. You can audit now.'); }
+    } catch {
+      toast('That could not be recorded.');
+      go.disabled = false;
+    }
+  };
+
+  $('#agree').hidden = false;
+  name.focus();
 }
 
 // ── the document panel ─────────────────────────────────────────────────────
@@ -1160,6 +1309,9 @@ $('#go').onclick = async () => {
   const root = $('#root').value.trim();
   const picked = state.picked;
   if (!root && !picked) return toast('Enter a folder to audit.');
+  // Asked here as well as at startup, because the terms can change under a
+  // window that has been open since before an update.
+  if (!await checkAgreements()) return;
   $('#go').disabled = true;
   try {
     await api('/api/audit', {
@@ -1167,7 +1319,13 @@ $('#go').onclick = async () => {
       body: JSON.stringify(picked ? { root, paths: picked } : { root })
     });
     poll();
-  } catch (e) { toast(e.message); $('#go').disabled = false; }
+  } catch (e) {
+    // The server refuses an audit until the terms are answered. It is the
+    // authority on that, not this page: a stale tab cannot talk its way past.
+    if (/agreement|terms to read/i.test(e.message || '')) await checkAgreements();
+    else toast(e.message);
+    $('#go').disabled = false;
+  }
 };
 
 // Reading the scans is not part of an audit — it is slow, seconds a page —
@@ -1832,6 +1990,10 @@ $('.logo').onclick = () => {
 // occasionally. Long gaps on purpose.
 setTimeout(buddyMaybe, 45000);
 setInterval(buddyMaybe, 240000);
+
+// The terms, before anything else. Nothing on screen behind this matters
+// until they are answered, and the server refuses an audit regardless.
+checkAgreements();
 
 // pywebview injects its bridge after the page loads and announces it here.
 window.addEventListener('pywebviewready', askForAJob);

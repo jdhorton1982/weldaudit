@@ -771,6 +771,31 @@ CREATE TABLE IF NOT EXISTS ocr_cache (
     PRIMARY KEY (sha1, page_no, model)
 );
 
+-- Somebody agreeing to a document before the program audits anything. Not
+-- tied to a project: the obligation is the person's and the machine's, and it
+-- outlives whichever job happened to be open. Nothing is ever updated or
+-- deleted here - a later acceptance is another row, so the record reads as
+-- the sequence of things that were agreed to and when.
+--
+-- `sha256` is the whole point. It identifies the exact wording that was on
+-- screen, so a record can be checked against a document later without the
+-- database keeping a copy of every version of the text.
+CREATE TABLE IF NOT EXISTS agreement_acceptance (
+    id             INTEGER PRIMARY KEY,
+    document_key   TEXT NOT NULL,     -- 'privacy' | 'nda' | 'pilot'
+    document_title TEXT,              -- as it read on the day
+    sha256         TEXT NOT NULL,     -- of the exact text shown
+    name           TEXT NOT NULL,     -- typed by the person accepting
+    company        TEXT,
+    email          TEXT,
+    accepted_at    TEXT NOT NULL,     -- UTC, ISO 8601
+    machine        TEXT,
+    account        TEXT,              -- the Windows account, not the name typed
+    app_version    TEXT,
+    platform       TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_agreed ON agreement_acceptance(document_key, sha256);
+
 -- Audit exceptions.
 CREATE TABLE IF NOT EXISTS finding_note (
     id          INTEGER PRIMARY KEY,
