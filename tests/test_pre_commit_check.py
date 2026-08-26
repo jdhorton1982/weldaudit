@@ -95,3 +95,98 @@ def test_the_site_list_actually_has_patterns_on_this_machine():
     if not guard.FORBIDDEN_LIST.is_file():
         pytest.skip("no private/forbidden.txt in this clone")
     assert guard.site_patterns(), "the list is present but yielded no patterns"
+
+
+# -- the commit message -----------------------------------------------------
+
+def _msg(tmp_path, text: str) -> Path:
+    p = tmp_path / "COMMIT_EDITMSG"
+    p.write_text(text, encoding="utf-8")
+    return p
+
+
+def test_a_message_naming_a_customer_is_refused(tmp_path, monkeypatch, capsys):
+    listing = tmp_path / "forbidden.txt"
+    listing.write_text("Northwind Pipeline\n", encoding="utf-8")
+    monkeypatch.setattr(guard, "FORBIDDEN_LIST", listing)
+
+    assert guard.check_message(_msg(tmp_path, "Fix the Northwind Pipeline import\n")) == 1
+    err = capsys.readouterr().err
+    assert "the commit message" in err
+    assert "reword it" in err
+
+
+def test_a_message_carrying_a_secret_is_refused(tmp_path, monkeypatch):
+    # Assembled rather than written out. A file testing a secret scanner, with
+    # a literal secret in it, trips the secret scanner - which this one did,
+    # on its own commit. The check reads file text, so splitting the token
+    # keeps this file clean while leaving the test honest.
+    fake = "sk-" + "ant-" + "abcdefghijklmnop"
+    monkeypatch.setattr(guard, "FORBIDDEN_LIST", tmp_path / "absent.txt")
+    text = f"Rotate the key\n\nWas {fake} in the config.\n"
+    assert guard.check_message(_msg(tmp_path, text)) == 1
+
+
+def test_an_ordinary_message_passes(tmp_path, monkeypatch):
+    monkeypatch.setattr(guard, "FORBIDDEN_LIST", tmp_path / "absent.txt")
+    assert guard.check_message(_msg(tmp_path, "Read a WeldTrace download\n")) == 0
+
+
+def test_gits_own_comments_are_not_scanned(tmp_path, monkeypatch):
+    # The comment block lists staged paths and the branch. Git strips it, so a
+    # name appearing there is never published - reporting it would be a false
+    # alarm, and a guard that cries wolf gets bypassed.
+    listing = tmp_path / "forbidden.txt"
+    listing.write_text("Northwind\n", encoding="utf-8")
+    monkeypatch.setattr(guard, "FORBIDDEN_LIST", listing)
+
+    text = ("Tidy the parser\n"
+            "#\n"
+            "# On branch main\n"
+            "# Changes to be committed:\n"
+            "#\tmodified:   Northwind-notes.txt\n")
+    assert guard.check_message(_msg(tmp_path, text)) == 0
+
+
+def test_the_verbose_diff_below_the_scissors_is_not_scanned(tmp_path, monkeypatch):
+    # `git commit -v` pastes the whole diff under a scissors line and strips it
+    # again. The staged-file check is what covers that content.
+    listing = tmp_path / "forbidden.txt"
+    listing.write_text("Northwind\n", encoding="utf-8")
+    monkeypatch.setattr(guard, "FORBIDDEN_LIST", listing)
+
+    text = ("Tidy the parser\n\n"
+            "# ------------------------ >8 ------------------------\n"
+            "diff --git a/x b/x\n+Northwind everywhere\n")
+    assert guard.check_message(_msg(tmp_path, text)) == 0
+
+
+def test_the_body_is_still_scanned_above_the_scissors(tmp_path, monkeypatch):
+    listing = tmp_path / "forbidden.txt"
+    listing.write_text("Northwind\n", encoding="utf-8")
+    monkeypatch.setattr(guard, "FORBIDDEN_LIST", listing)
+
+    text = ("Tidy the Northwind parser\n\n"
+            "# ------------------------ >8 ------------------------\n"
+            "diff --git a/x b/x\n")
+    assert guard.check_message(_msg(tmp_path, text)) == 1
+
+
+def test_an_unreadable_message_is_reported_not_passed_over_in_silence(
+        tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(guard, "FORBIDDEN_LIST", tmp_path / "absent.txt")
+    assert guard.check_message(tmp_path / "does-not-exist") == 0
+    assert "not scanned" in capsys.readouterr().err
+
+
+def test_an_argument_selects_the_message_check(tmp_path, monkeypatch):
+    monkeypatch.setattr(guard, "FORBIDDEN_LIST", tmp_path / "absent.txt")
+    assert guard.main([str(_msg(tmp_path, "Ordinary message\n"))]) == 0
+
+
+def test_both_hooks_find_the_check_by_their_own_path():
+    for hook in ("pre-commit", "commit-msg"):
+        text = (ROOT / "tools" / "hooks" / hook).read_text(encoding="utf-8")
+        assert 'dirname "$0"' in text, hook
+        assert "pre_commit_check.py" in text, hook
+    assert '"$1"' in (ROOT / "tools" / "hooks" / "commit-msg").read_text(encoding="utf-8")

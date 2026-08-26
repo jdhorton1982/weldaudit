@@ -8,4 +8,6 @@
 # Bypass a single commit with `git commit --no-verify`.
 PY="$HOME/.weldaudit/venv/Scripts/python.exe"
 [ -x "$PY" ] || PY=python
-exec "$PY" tools/pre_commit_check.py
+# Located from this hook rather than from the working directory, for the same
+# reason the check finds its own forbidden list that way.
+exec "$PY" "$(dirname "$0")/../pre_commit_check.py"

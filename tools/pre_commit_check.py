@@ -109,7 +109,86 @@ def site_patterns() -> list[tuple[re.Pattern, str]]:
     return out
 
 
-def main() -> int:
+#: Everything below this in a commit message is git's own, and git removes it
+#: before the message is stored: the comment block, and the diff that
+#: ``git commit -v`` pastes under a scissors line. Scanning it would report a
+#: staged filename or a diff hunk that is never going to be published, and the
+#: one thing worse than a guard that misses is a guard that cries wolf.
+_SCISSORS = re.compile(r"^#* *-+ *>8 *-+.*$", re.MULTILINE)
+
+
+def message_body(text: str) -> str:
+    """What of a commit message will actually be committed."""
+    text = _SCISSORS.split(text)[0]
+    return "\n".join(ln for ln in text.splitlines() if not ln.lstrip().startswith("#"))
+
+
+def check_message(path: Path) -> int:
+    """Scan the commit message git is about to store.
+
+    A separate entry point because a commit message does not exist yet at
+    pre-commit time - the author may not have written it, and with an editor
+    they certainly have not. ``commit-msg`` is the hook that has it, so this
+    runs there, and the check is otherwise the same one.
+
+    Worth having because the message is published exactly as widely as the
+    diff, and is the half nobody re-reads. This file's own history contains
+    messages quoting a real job's reference numbers, written while scrubbing
+    those same numbers out of the code.
+    """
+    try:
+        text = message_body(path.read_text(encoding="utf-8", errors="replace"))
+    except OSError as bad:
+        print(f"note: could not read the commit message ({bad}); not scanned.",
+              file=sys.stderr)
+        return 0
+
+    rules = [(re.compile(p), why) for p, why in SECRETS] + site_patterns()
+    complaints = []
+    for pattern, why in rules:
+        hit = pattern.search(text)
+        if hit:
+            complaints.append(f"  the commit message\n      {why}: {_shown(hit)}")
+    return _refuse(complaints, subject="message")
+
+
+def _shown(hit) -> str:
+    text = hit.group(0)
+    if len(text) > 24:
+        # not an ellipsis: a Windows console mangles it
+        text = text[:12] + "..." + text[-6:]
+    return repr(text)
+
+
+def _refuse(complaints: list[str], subject: str) -> int:
+    if not complaints:
+        return 0
+
+    print(f"\nThis commit was stopped before it published something.\n", file=sys.stderr)
+    for c in complaints:
+        print(c, file=sys.stderr)
+    fix = ("  reword it      git commit again with the name taken out\n"
+           if subject == "message" else
+           "  unstage it     git restore --staged <path>\n"
+           "  ignore it      add the path to .gitignore\n")
+    print(
+        "\nThe repository is public and cannot be un-published: a force-push\n"
+        "removes a file from the branch but not from anyone who already has it,\n"
+        "and a credential that reached a public commit has to be rotated whatever\n"
+        "happens next.\n\n"
+        + fix
+        + "  it is fine     git commit --no-verify\n",
+        file=sys.stderr)
+    return 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    # `commit-msg` passes the path of the message file; `pre-commit` passes
+    # nothing. One script, so the two checks cannot drift apart.
+    if argv:
+        return check_message(Path(argv[0]))
+
     complaints: list[str] = []
 
     for path in binaries():
@@ -131,28 +210,10 @@ def main() -> int:
         for pattern, why in rules:
             hit = pattern.search(text)
             if hit:
-                shown = hit.group(0)
-                if len(shown) > 24:
-                    shown = shown[:12] + "..." + shown[-6:]   # not an ellipsis: a Windows console mangles it
-                complaints.append(f"  {path}\n      {why}: {shown!r}")
+                complaints.append(f"  {path}\n      {why}: {_shown(hit)}")
                 break
 
-    if not complaints:
-        return 0
-
-    print("\nThis commit was stopped before it published something.\n", file=sys.stderr)
-    for c in complaints:
-        print(c, file=sys.stderr)
-    print(
-        "\nThe repository is public and cannot be un-published: a force-push\n"
-        "removes a file from the branch but not from anyone who already has it,\n"
-        "and a credential that reached a public commit has to be rotated whatever\n"
-        "happens next.\n\n"
-        "  unstage it     git restore --staged <path>\n"
-        "  ignore it      add the path to .gitignore\n"
-        "  it is fine     git commit --no-verify\n",
-        file=sys.stderr)
-    return 1
+    return _refuse(complaints, subject="files")
 
 
 if __name__ == "__main__":

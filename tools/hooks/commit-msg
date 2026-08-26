@@ -1,0 +1,15 @@
+#!/bin/sh
+# Refuses a commit message that names a secret or a customer. The message is
+# published exactly as widely as the diff, and it is the half nobody re-reads.
+#
+# Separate from pre-commit because the message does not exist yet at that
+# point: with an editor the author has not written it. This is the hook git
+# hands it to. Same script, so the two checks cannot drift apart.
+#
+# Enable it once per clone:
+#     git config core.hooksPath tools/hooks
+#
+# Bypass a single commit with `git commit --no-verify`.
+PY="$HOME/.weldaudit/venv/Scripts/python.exe"
+[ -x "$PY" ] || PY=python
+exec "$PY" "$(dirname "$0")/../pre_commit_check.py" "$1"
