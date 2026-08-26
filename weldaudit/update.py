@@ -29,7 +29,7 @@ import json
 import re
 import sys
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 #: The file a release folder is recognised by.
@@ -88,23 +88,43 @@ def is_newer(offered: str, than: str) -> bool:
 class Release:
     version: str
     notes: str
-    archive: Path              #: the zip holding the build
+    archive: Path | None       #: the zip holding the build, once it is local
     sha256: str
     size: int
-    folder: Path
+    folder: Path | None
+    #: Where the archive can be fetched from, for a release offered over the
+    #: web rather than found on disk. Empty for a shared-folder release.
+    url: str = ""
+
+    @property
+    def from_the_web(self) -> bool:
+        return bool(self.url)
 
     @property
     def ready(self) -> bool:
-        """Whether the archive has actually finished arriving.
+        """Whether this release can be installed now.
 
-        OneDrive shows a file at its full size long before the bytes are
-        local, so the size is checked as a cheap first pass and the checksum
-        settles it.
+        For a shared folder that means the bytes have actually arrived:
+        OneDrive shows a file at its full size long before they have, so the
+        size is a cheap first pass and the checksum settles it.
+
+        A release offered over the web is ready by a different argument. There
+        is nothing half-arrived to guard against because nothing has been
+        fetched yet - :func:`fetch` downloads it and checks the same checksum
+        before :func:`stage` will unpack anything.
         """
+        if self.from_the_web:
+            return True
         try:
-            return self.archive.is_file() and self.archive.stat().st_size == self.size
+            return bool(self.archive) and self.archive.is_file() \
+                and self.archive.stat().st_size == self.size
         except OSError:
             return False
+
+    @property
+    def where(self) -> str:
+        """Where this release came from, for a message meant for a person."""
+        return self.url if self.from_the_web else str(self.folder or "")
 
 
 def places(extra: str | Path | None = None) -> list[Path]:
@@ -167,8 +187,16 @@ def read_release(folder: str | Path) -> Release | None:
     )
 
 
-def find_release(extra: str | Path | None = None) -> Release | None:
-    """The newest release on offer anywhere we know to look."""
+def find_release(extra: str | Path | None = None, url: str | None = None) -> Release | None:
+    """The newest release on offer anywhere we know to look.
+
+    Every folder, and then the URL if one is given - this reports the newest
+    of them, and asking the network is its job when it is handed a URL.
+
+    It is :func:`available` that decides whether to ask at all, and it asks
+    the folders on their own first. The startup check goes through that one,
+    so the copy that can see the shared folder still answers without a socket.
+    """
     best: Release | None = None
     for place in places(extra):
         try:
@@ -179,18 +207,47 @@ def find_release(extra: str | Path | None = None) -> Release | None:
         offered = read_release(place)
         if offered and (best is None or is_newer(offered.version, best.version)):
             best = offered
+
+    where = update_url(url)
+    if not where:
+        return best
+    try:
+        offered = read_release_url(where)
+    except NotOffered:
+        raise
+    except OSError:
+        return best          # a host that is down is not an error worth raising
+    if offered and (best is None or is_newer(offered.version, best.version)):
+        best = offered
     return best
 
 
 def available(extra: str | Path | None = None,
-              than: str | None = None) -> Release | None:
-    """A release worth installing: newer than us, and fully arrived."""
+              than: str | None = None,
+              url: str | None = None) -> Release | None:
+    """A release worth installing: newer than us, and fully arrived.
+
+    The folders are asked first and on their own. Only if they have nothing
+    worth having does this reach for the network, so the copy that can see the
+    shared folder - which is nearly every copy - answers the startup check
+    without a socket, exactly as it did before there was a web fallback.
+    """
+    running = than or current_version()
+
     offered = find_release(extra)
-    if offered is None:
+    if offered and is_newer(offered.version, running) and offered.ready:
+        return offered
+
+    where = update_url(url)
+    if not where:
         return None
-    if not is_newer(offered.version, than or current_version()):
+    try:
+        from_web = read_release_url(where)
+    except OSError:
         return None
-    return offered if offered.ready else None
+    if from_web is None or not is_newer(from_web.version, running):
+        return None
+    return from_web if from_web.ready else None
 
 
 def digest(path: str | Path, chunk: int = 1 << 20) -> str:
@@ -208,36 +265,224 @@ class NotWhatItSaid(Exception):
     """The archive did not match its checksum, so it was not used."""
 
 
-def stage(release: Release, into: str | Path) -> Path:
+# ---------------------------------------------------------------------------
+# The same release, offered over the web
+# ---------------------------------------------------------------------------
+#
+# The shared folder stays the way this is meant to work, and the reasons in
+# this module's docstring have not changed: no server, no credential in the
+# binary, and a folder that reaches exactly the people it was shared with.
+#
+# What the folder cannot do is reach somebody it was never shared with, or a
+# machine where OneDrive is not signed in. For those, a release can also be
+# published at a URL, and this is the fallback that finds it. Deliberately a
+# fallback: an offline install keeps working, and a copy that can see the
+# folder never touches the network.
+#
+# Two things are non-negotiable if it is used at all.
+#
+# `version.json` must come over HTTPS. It carries the checksum that vouches
+# for the archive, so it is the one file that must not be rewritable in
+# flight - fetch it over plain HTTP and an attacker supplies both the build
+# and the hash that approves it.
+#
+# And whatever the URL serves is only as private as the host makes it. The
+# program carries the approved materials list inside it, so a build published
+# where anyone can fetch it publishes a customer's document. That is a
+# decision about hosting rather than about this code, and this code will not
+# make it silently: the feature is off until a URL is configured.
+
+#: The environment variable naming the release URL. Unset means the web
+#: fallback does not run at all, which is the default.
+UPDATE_URL_VAR = "WELDAUDIT_UPDATE_URL"
+
+#: How long to wait on the network before giving up and staying on this
+#: version. An update that has not arrived is an ordinary Tuesday; a program
+#: that will not start because a host is slow is a support call.
+TIMEOUT = 10
+
+#: Refuse an archive that claims to be wildly larger than the release said.
+#: `version.json` states the size, so anything past it is either a mistake or
+#: someone filling a disk.
+_SIZE_SLACK = 1 << 20
+
+
+class NotOffered(Exception):
+    """The URL did not describe a release that could be used."""
+
+
+def update_url(explicit: str | None = None) -> str:
+    """The configured release URL, or ``''`` when there is none."""
+    import os
+
+    return (explicit or os.environ.get(UPDATE_URL_VAR) or "").strip().rstrip("/")
+
+
+def _must_be_https(url: str) -> None:
+    from urllib.parse import urlparse
+
+    scheme = urlparse(url).scheme.lower()
+    if scheme != "https":
+        raise NotOffered(
+            f"the release URL is {scheme or 'not a URL'} rather than https. "
+            f"version.json carries the checksum that vouches for the build, so "
+            f"it cannot be fetched over a connection somebody else can rewrite.")
+
+
+def _open(url: str, timeout: int = TIMEOUT):
+    import urllib.request
+
+    request = urllib.request.Request(
+        url, headers={"User-Agent": f"WeldAudit/{current_version()}"})
+    return urllib.request.urlopen(request, timeout=timeout)  # noqa: S310 - https enforced
+
+
+def read_release_url(base: str, timeout: int = TIMEOUT) -> Release | None:
+    """The release described by ``<base>/version.json``, or None.
+
+    Returns None for the ordinary "nothing published there" cases and raises
+    :class:`NotOffered` only for a URL that should not be used at all, so a
+    caller can stay quiet about a host being down and speak up about a host
+    being http.
+    """
+    base = update_url(base)
+    if not base:
+        return None
+    _must_be_https(base)
+
+    try:
+        with _open(f"{base}/{MARKER}", timeout) as response:
+            said = json.loads(response.read(1 << 20).decode("utf-8"))
+    except (OSError, ValueError):
+        return None
+
+    name = str(said.get("file") or "")
+    if not said.get("version") or not name:
+        return None
+    # The archive is named by version.json, and version.json is fetched from
+    # the host being asked - but a name is still not a path to obey. A "file"
+    # of "../../etc/thing" would otherwise walk off the release URL.
+    if "/" in name or "\\" in name or name.startswith("."):
+        raise NotOffered(f"the release names its archive {name!r}, "
+                         f"which is not a file in the release folder.")
+
+    return Release(
+        version=str(said["version"]),
+        notes=str(said.get("notes") or ""),
+        archive=None,
+        sha256=str(said.get("sha256") or ""),
+        size=int(said.get("bytes") or 0),
+        folder=None,
+        url=f"{base}/{name}",
+    )
+
+
+def fetch(release: Release, into: str | Path,
+          progress=None, timeout: int = TIMEOUT) -> Path:
+    """Download a web release's archive, and return where it landed.
+
+    Checked before it is returned, on exactly the terms a shared-folder
+    release is checked: the size it said, then the checksum it said. A
+    download that stops halfway is the web's version of a half-synced file,
+    and it is refused the same way rather than unpacked.
+
+    ``progress`` is called with ``(bytes so far, total)`` so a window can show
+    something during a 138 MB fetch.
+    """
+    if not release.from_the_web:
+        raise NotOffered("this release is not one that is fetched")
+    if not release.sha256:
+        raise NotOffered("the release states no checksum, so a download of it "
+                         "could not be checked before being installed.")
+    _must_be_https(release.url)
+
+    into = Path(into)
+    into.mkdir(parents=True, exist_ok=True)
+    target = into / Path(release.url).name
+
+    cap = (release.size or 0) + _SIZE_SLACK
+    got = 0
+    with _open(release.url, timeout) as response, open(target, "wb") as out:
+        while True:
+            block = response.read(1 << 20)
+            if not block:
+                break
+            got += len(block)
+            if release.size and got > cap:
+                out.close()
+                target.unlink(missing_ok=True)
+                raise NotWhatItSaid(
+                    f"the download is larger than the {release.size:,} bytes "
+                    f"the release said it would be, so it was stopped.")
+            out.write(block)
+            if progress:
+                progress(got, release.size)
+
+    if release.size and got != release.size:
+        target.unlink(missing_ok=True)
+        raise NotWhatItSaid(
+            f"the download stopped at {got:,} of {release.size:,} bytes. "
+            f"Nothing was installed; try again when the connection is better.")
+
+    found = digest(target)
+    if found != release.sha256.lower():
+        target.unlink(missing_ok=True)
+        raise NotWhatItSaid(
+            f"what was downloaded is not the file the release describes "
+            f"(expected {release.sha256[:12]}..., got {found[:12]}...). "
+            f"Nothing was installed.")
+    return target
+
+
+def stage(release: Release, into: str | Path, progress=None) -> Path:
     """Unpack a verified release, and return the folder holding the new build.
 
     Verified first, always. A OneDrive file that is still syncing reads short
     without raising, and half a program that starts is worse than none.
+
+    A release offered over the web is downloaded first, so that every caller
+    applies both kinds the same way and neither can skip the checksum on its
+    way in. It lands in a holding folder of its own rather than in ``into``,
+    which is emptied before anything is unpacked into it - downloading there
+    would delete the archive between fetching it and reading it.
     """
+    import shutil
+    import tempfile
+
     into = Path(into)
-    if release.sha256:
-        got = digest(release.archive)
-        if got != release.sha256.lower():
-            raise NotWhatItSaid(
-                f"{release.archive.name} is not the file the release describes "
-                f"(expected {release.sha256[:12]}..., got {got[:12]}...). "
-                f"If it is still syncing, try again once it has finished.")
+    holding: Path | None = None
+    if release.from_the_web and release.archive is None:
+        holding = Path(tempfile.mkdtemp(prefix="weldaudit-update-"))
+        release = replace(release, archive=fetch(release, holding, progress=progress))
 
-    if into.exists():
-        import shutil
+    try:
+        if release.archive is None:
+            raise NotWhatItSaid("this release has no archive to install.")
 
-        shutil.rmtree(into, ignore_errors=True)
-    into.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(release.archive) as z:
-        # A zip is an untrusted container even from a folder we trust: a
-        # member named ..\..\something would otherwise be written outside.
-        for member in z.namelist():
-            target = (into / member).resolve()
-            if not str(target).startswith(str(into.resolve())):
-                raise NotWhatItSaid(f"{release.archive.name} contains {member!r}, "
-                                    f"which would write outside the folder")
-        z.extractall(into)
-    return into
+        if release.sha256:
+            got = digest(release.archive)
+            if got != release.sha256.lower():
+                raise NotWhatItSaid(
+                    f"{release.archive.name} is not the file the release describes "
+                    f"(expected {release.sha256[:12]}..., got {got[:12]}...). "
+                    f"If it is still syncing, try again once it has finished.")
+
+        if into.exists():
+            shutil.rmtree(into, ignore_errors=True)
+        into.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(release.archive) as z:
+            # A zip is an untrusted container even from a folder we trust: a
+            # member named ..\..\something would otherwise be written outside.
+            for member in z.namelist():
+                target = (into / member).resolve()
+                if not str(target).startswith(str(into.resolve())):
+                    raise NotWhatItSaid(f"{release.archive.name} contains {member!r}, "
+                                        f"which would write outside the folder")
+            z.extractall(into)
+        return into
+    finally:
+        if holding is not None:
+            shutil.rmtree(holding, ignore_errors=True)
 
 
 def publish(build: str | Path, into: str | Path, version: str,

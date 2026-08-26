@@ -509,6 +509,10 @@ def create_app(db_path: str | Path) -> FastAPI:
         A local file read, not a network call: the folder is one OneDrive (or
         a share, or a stick) has already synced. So this is cheap enough to
         ask on every startup and costs nothing when there is nothing to say.
+
+        It stays a local read unless a release URL is configured *and* no
+        folder is offering anything newer - see ``update.available``. Where
+        that is set, this can make one short request on startup.
         """
         from .update import available, current_version, install_dir
 
@@ -517,7 +521,7 @@ def create_app(db_path: str | Path) -> FastAPI:
             "running": current_version(),
             "version": offered.version if offered else None,
             "notes": offered.notes if offered else "",
-            "from": str(offered.folder) if offered else "",
+            "from": offered.where if offered else "",
             # A one-file build has no folder to swap, so the offer is worth
             # showing but the button is not.
             "can_apply": install_dir() is not None,
