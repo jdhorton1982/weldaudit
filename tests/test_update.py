@@ -27,8 +27,8 @@ import pytest  # noqa: E402
 
 from weldaudit import update  # noqa: E402
 from weldaudit.update import (  # noqa: E402
-    INSTALLER, NotWhatItSaid, available, digest, is_newer, publish,
-    read_release, stage,
+    INSTALLER, NotWhatItSaid, available, carry_uninstaller, digest,
+    handoff_script, is_newer, publish, read_release, stage,
 )
 
 
@@ -168,6 +168,61 @@ def test_a_build_with_no_installer_publishes_anyway(build, shared):
     said = json.loads((shared / "version.json").read_text(encoding="utf-8"))
     assert not (shared / INSTALLER).exists()
     assert "installer" not in said
+
+
+# -- the uninstaller survives the swap ---------------------------------------
+#
+# The swap replaces the install folder wholesale, and Inno Setup's
+# unins000.exe lives inside it. Every update deleted it, leaving the entry in
+# Settings > Apps pointing at a file that was gone: the program still listed,
+# and Uninstall doing nothing at all. Found by updating a real machine and
+# then looking at what the entry pointed to.
+
+
+def test_the_uninstaller_is_carried_into_the_new_build(tmp_path):
+    install = tmp_path / "WeldAudit"; install.mkdir()
+    (install / "unins000.exe").write_bytes(b"MZ the uninstaller")
+    (install / "unins000.dat").write_bytes(b"what to remove")
+    staged = tmp_path / "WeldAudit.new"; staged.mkdir()
+
+    carried = carry_uninstaller(install, staged)
+
+    assert sorted(carried) == ["unins000.dat", "unins000.exe"]
+    assert (staged / "unins000.exe").read_bytes() == b"MZ the uninstaller"
+    assert (staged / "unins000.dat").read_bytes() == b"what to remove"
+
+
+def test_a_copy_that_was_never_installed_has_nothing_to_carry(tmp_path):
+    """An unzipped copy has no uninstaller, and that is not a failure."""
+    install = tmp_path / "WeldAudit"; install.mkdir()
+    (install / "WeldAudit.exe").write_bytes(b"MZ")
+    staged = tmp_path / "WeldAudit.new"; staged.mkdir()
+    assert carry_uninstaller(install, staged) == []
+
+
+def test_a_renumbered_uninstaller_is_carried_too(tmp_path):
+    """Inno writes unins001 when a unins000 is already there."""
+    install = tmp_path / "WeldAudit"; install.mkdir()
+    (install / "unins001.exe").write_bytes(b"MZ")
+    (install / "unins001.dat").write_bytes(b"data")
+    staged = tmp_path / "WeldAudit.new"; staged.mkdir()
+    assert sorted(carry_uninstaller(install, staged)) == ["unins001.dat", "unins001.exe"]
+
+
+def test_the_handoff_corrects_the_version_in_settings_apps():
+    """Left alone, Settings > Apps reports the version first installed for ever."""
+    script = handoff_script(Path(r"C:\X\WeldAudit.new"), Path(r"C:\X\WeldAudit"),
+                            123, "0.5.1")
+    assert "DisplayVersion" in script
+    assert "0.5.1" in script
+    # After the folders are swapped, and before the new program is started.
+    assert script.index("Rename-Item $s $i") < script.index("HKCU")
+    assert script.index("HKCU") < script.rindex("Start-Process")
+
+
+def test_a_handoff_with_no_version_touches_no_registry():
+    script = handoff_script(Path("a"), Path("b"), 1)
+    assert "HKCU" not in script
 
 
 def test_an_installer_already_in_place_is_not_copied_over_itself(build, shared):

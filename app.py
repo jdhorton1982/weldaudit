@@ -465,7 +465,14 @@ def _open_window(url: str, server) -> bool:
         return False                    # built without it; the browser will do
 
     try:
-        webview.create_window("WeldAudit", url, width=1280, height=860,
+        # The version is in the title because there was no way to tell from
+        # the window which build you were looking at. "Is this the new one?"
+        # cost three separate rounds of guessing before anybody thought to
+        # check; a title bar answers it without asking.
+        from weldaudit import __version__
+
+        webview.create_window(f"WeldAudit {__version__}", url,
+                              width=1280, height=860,
                               min_size=(900, 600), confirm_close=False,
                               js_api=_Windows())
         # gui="edgechromium" is the WebView2 backend. Named rather than left

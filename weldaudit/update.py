@@ -599,6 +599,31 @@ def install_dir() -> Path | None:
     return here if (here / "_internal").is_dir() else None
 
 
+def carry_uninstaller(install: Path, staged: Path) -> list[str]:
+    """Copy Inno Setup's uninstaller into the build about to replace this one.
+
+    The swap replaces the install folder wholesale, and unins000.exe lives
+    inside it. Without this, every update deletes the uninstaller and leaves
+    the entry in Settings > Apps pointing at a file that is not there: the
+    program is still listed, and Uninstall does nothing at all.
+
+    Copied rather than regenerated because only Inno can write its own .dat,
+    which records what to remove. A copy made without one would uninstall
+    nothing.
+
+    Returns what was carried. Empty is normal and not a failure: a copy that
+    was unzipped rather than installed has no uninstaller to keep.
+    """
+    import shutil
+
+    carried = []
+    for found in sorted(install.glob("unins*")):
+        if found.is_file():
+            shutil.copy2(found, staged / found.name)
+            carried.append(found.name)
+    return carried
+
+
 def apply(release: Release) -> str:
     """Unpack the update and hand the swap to a process that outlives us.
 
@@ -618,6 +643,7 @@ def apply(release: Release) -> str:
 
     staged = install.with_name(install.name + ".new")
     stage(release, staged)                 # verifies before it writes anything
+    carry_uninstaller(install, staged)
 
     # -Command rather than -File, deliberately: a script *file* is subject to
     # PowerShell's execution policy, which on a managed laptop is set by group
@@ -630,7 +656,7 @@ def apply(release: Release) -> str:
     # script was correct and simply never ran.
     command = ["powershell", "-NoProfile", "-NonInteractive",
                "-WindowStyle", "Hidden", "-Command",
-               handoff_script(staged, install, os.getpid())]
+               handoff_script(staged, install, os.getpid(), release.version)]
     quiet = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                  stderr=subprocess.DEVNULL, close_fds=True,
                  # Never the folder about to be renamed: a process's current
@@ -660,7 +686,8 @@ def apply(release: Release) -> str:
             f"in a few seconds.")
 
 
-def handoff_script(staged: Path, install: Path, pid: int) -> str:
+def handoff_script(staged: Path, install: Path, pid: int,
+                   version: str = "") -> str:
     """PowerShell that swaps the folders once this process has gone.
 
     Windows will not let a program replace the directory it is running from,
@@ -673,6 +700,23 @@ def handoff_script(staged: Path, install: Path, pid: int) -> str:
     between the two renames, there is still a program on disk to put back.
     """
     log = install.parent / "weldaudit-update.log"
+
+    # Settings > Apps keeps its own copy of the version, written once by the
+    # installer and never touched again -- so a machine updated to 0.5.1 went
+    # on listing 0.4.9 for as long as it stayed installed. The entry is found
+    # by where it points rather than by a hardcoded product code, which would
+    # go stale the first time the installer's AppId changed.
+    apps_entry = ("" if not version else (
+        f"$v='{version}';"
+        f"$k='HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall';"
+        f"try{{Get-ChildItem $k -EA Stop|ForEach-Object{{"
+        f"$e=Get-ItemProperty $_.PSPath -EA SilentlyContinue;"
+        f"if($e.UninstallString -like ('*'+$i+'*')){{"
+        f"Set-ItemProperty $_.PSPath DisplayVersion $v -EA SilentlyContinue;"
+        f"Set-ItemProperty $_.PSPath DisplayName ('WeldAudit '+$v) -EA SilentlyContinue;"
+        f"note ('Settings > Apps now reads '+$v)}}}}}}"
+        f"catch{{note 'could not update the Apps entry'}};"))
+
     return (
         f"$L='{log}';"
         f"function note($m){{try{{Add-Content -Path $L -Value "
@@ -699,6 +743,7 @@ def handoff_script(staged: Path, install: Path, pid: int) -> str:
         f"exit 1}};"
         f"Rename-Item $s $i;"
         f"note 'swapped in the new build';"
+        f"{apps_entry}"
         f"Remove-Item $old -Recurse -Force -EA SilentlyContinue;"
         f"note 'starting the new program';"
         f"Start-Process -FilePath (Join-Path $i 'WeldAudit.exe') -WorkingDirectory $i"
