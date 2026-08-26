@@ -69,6 +69,10 @@ exe = EXE(  # noqa: F821
     codesign_identity=None,
     entitlements_file=None,
     icon=build_config.ICON,
+    # Same resource as the one-file build. Both specs read it from
+    # build_config so the two artefacts of one release cannot disagree about
+    # what version they are.
+    version=build_config.version_info(),
 )
 
 COLLECT(  # noqa: F821

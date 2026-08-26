@@ -65,4 +65,8 @@ exe = EXE(  # noqa: F821
     # the toolbar shows, so the exe on the desktop and the window it opens
     # are recognisably one thing.
     icon=build_config.ICON,
+    # So the Details tab - and anything that inventories what is installed on
+    # a managed laptop - can say which copy this is. Built from the program's
+    # own __version__ rather than typed here.
+    version=build_config.version_info(),
 )

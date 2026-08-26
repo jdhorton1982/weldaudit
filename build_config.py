@@ -20,6 +20,70 @@ from PyInstaller.utils.hooks import collect_data_files
 ICON = "weldaudit.ico"
 
 
+def version_info():
+    """The Windows version resource, built from the program's own number.
+
+    Without this the exe has no version at all in its properties: the Details
+    tab is blank, and so is anything that reads a file version to decide what
+    it is looking at - an inventory of what is installed on a managed laptop,
+    an antivirus reputation lookup, a helpdesk asking which copy someone is
+    running. The installer has carried a version since it was added, so the
+    two artefacts of the same build disagreed about whether they had one.
+
+    Composed here rather than kept in the version file PyInstaller normally
+    reads, for the same reason `Build.bat` asks the program for its version
+    rather than being told: a number written down in a second place is a
+    number that eventually disagrees with the first.
+    """
+    from PyInstaller.utils.win32.versioninfo import (
+        FixedFileInfo, StringFileInfo, StringStruct, StringTable, VarFileInfo,
+        VarStruct, VSVersionInfo,
+    )
+
+    version = _version()
+    # The binary fields want exactly four integers; the string fields show the
+    # version as it is actually written.
+    parts = tuple(int(p) for p in version.split(".")) + (0, 0, 0, 0)
+    numbers = parts[:4]
+
+    return VSVersionInfo(
+        ffi=FixedFileInfo(filevers=numbers, prodvers=numbers,
+                          mask=0x3F, flags=0x0, OS=0x40004, fileType=0x1,
+                          subtype=0x0, date=(0, 0)),
+        kids=[
+            StringFileInfo([StringTable("040904B0", [
+                StringStruct("CompanyName", "WeldAudit"),
+                StringStruct("FileDescription",
+                             "Turnover package auditing for pipeline construction"),
+                StringStruct("FileVersion", version),
+                StringStruct("InternalName", "WeldAudit"),
+                StringStruct("OriginalFilename", "WeldAudit.exe"),
+                StringStruct("ProductName", "WeldAudit"),
+                StringStruct("ProductVersion", version),
+            ])]),
+            # 0x0409 US English, 1200 UTF-16. Named because the codepage here
+            # and the "040904B0" above have to agree, and nothing checks it.
+            VarFileInfo([VarStruct("Translation", [0x0409, 1200])]),
+        ],
+    )
+
+
+def _version() -> str:
+    """The program's version, asked of the program.
+
+    Read out of the source rather than imported: a spec runs inside
+    PyInstaller's own process, and importing the package there pulls in the
+    whole dependency tree before the analysis that is meant to discover it.
+    """
+    import re
+
+    text = pathlib.Path("weldaudit/__init__.py").read_text(encoding="utf-8")
+    found = re.search(r'__version__\s*=\s*"([^"]+)"', text)
+    if not found:
+        raise SystemExit("build_config: no __version__ in weldaudit/__init__.py")
+    return found.group(1)
+
+
 def datas():
     """Data files both builds carry."""
     # The OCR models and their character dictionary. Without these the build
@@ -88,5 +152,6 @@ HIDDEN = [
     "weldaudit.rules.nde_coverage", "weldaudit.rules.ndetech",
     "weldaudit.rules.registers", "weldaudit.rules.review",
     "weldaudit.rules.roster", "weldaudit.rules.scope",
-    "weldaudit.rules.welders", "weldaudit.rules.wps",
+    "weldaudit.rules.welders", "weldaudit.rules.weldtrace",
+    "weldaudit.rules.wps",
 ]
