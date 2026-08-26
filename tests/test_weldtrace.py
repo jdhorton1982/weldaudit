@@ -34,7 +34,7 @@ WELD_HEADER = (
 
 def weld_row(**over) -> str:
     row = {
-        "pack": "TP-1-1", "reference": "IIAFIELD-8-21-2026-17600252",
+        "pack": "TP-1-1", "reference": "NDEFIELD-8-21-2026-40300118",
         "weld": "FW-104", "drawing": "2-D1-0-GL-4012-1-0",
         "line": "6-B1-0V-PF-4112", "category": "Field", "joint": "BW",
         "size": "6", "wps": "XTO-ASME-P1-HYP-NACE-0",
@@ -43,7 +43,7 @@ def weld_row(**over) -> str:
         "material1": "PIPE", "heat1": "70097", "material2": "PIPE",
         "heat2": "70097",
         "rt_requested": "Yes",
-        "rt": "Passed;IIAFIELD-8-21-2026-17600252-0;Aug-21-2026;",
+        "rt": "Passed;NDEFIELD-8-21-2026-40300118-0;Aug-21-2026;",
         "rt_retest_requested": "No", "rt_retest": "-",
         "vi_requested": "Yes", "vi": "Passed;-;Aug-21-2026;",
         "result": "Accepted", "penalty": "-",
@@ -70,7 +70,7 @@ HEAT_HEADER = ("Heat Number,Material Name,Product Form,Pipe Fitting Type,"
 
 def heat_export(tmp_path, *rows, name="projectMaterialsExport.csv") -> Path:
     path = tmp_path / name
-    body = rows or ('"70097","6in Pipe","PIPE","-","Welspun","A106","B","1",'
+    body = rows or ('"70097","6in Pipe","PIPE","-","Northgate Tube","A106","B","1",'
                     '"70097-MTR.pdf","Active"',)
     path.write_text("\n".join([HEAT_HEADER, *body]), encoding="utf-8")
     return path
@@ -210,7 +210,7 @@ def test_a_result_splits_into_verdict_report_and_date(tmp_path):
     welds = wt.parse_weld_register(weld_export(tmp_path))
     rt = welds[0].exams["RT"]
     assert rt.passed and not rt.failed
-    assert rt.report == "IIAFIELD-8-21-2026-17600252"
+    assert rt.report == "NDEFIELD-8-21-2026-40300118"
     assert rt.revision == "0"
 
 
@@ -271,7 +271,7 @@ def test_a_welds_export_still_takes_the_heat_out_of_the_material_code(tmp_path):
 
 @pytest.mark.parametrize("filename, kind", [
     ("TestPackExport.csv", "weldtrace_welds"),
-    ("BD16 PAD C weldsExport.csv", "weldtrace_welds"),
+    ("Merlin 3 Pad C weldsExport.csv", "weldtrace_welds"),
     ("projectMaterialsExport.csv", "weldtrace_materials"),
     ("AnnotationAttachments_TEST 1.pdf", "weldtrace_stamps"),
     ("TEST 1 - Test Plan.docx", "weldtrace_test_plan"),
@@ -281,7 +281,7 @@ def test_a_download_is_filed_correctly_unrenamed(filename, kind):
     # The exports are named for the report that produced them, so an unpacked
     # download has to be recognised as it arrives rather than after somebody
     # renames it into the book.
-    assert taxonomy.kind_for(f"C:/jobs/BD16 PAD C/{filename}") == kind
+    assert taxonomy.kind_for(f"C:/jobs/Merlin 3 Pad C/{filename}") == kind
 
 
 def test_the_signed_drawing_set_satisfies_the_as_built_section():

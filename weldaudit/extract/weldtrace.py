@@ -27,7 +27,7 @@ are indexed and left alone.  Storing them is what the package needs; rewriting
 a signed PDF would break the seal that makes it worth storing.
 
 The NDE report references are written to ``weld.nde_report`` and not to
-``weld.nde_id``.  ``CQ-20260331RT01`` is not an NdeId - it has no series and
+``weld.nde_id``.  ``NX-20260331RT01`` is not an NdeId - it has no series and
 no sequence - and forcing it into that column would have the gap-in-sequence
 and malformed-ticket rules reasoning about a numbering scheme they were not
 written for.  :mod:`weldaudit.rules.weldtrace` checks these references against

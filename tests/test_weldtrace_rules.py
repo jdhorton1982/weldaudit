@@ -33,7 +33,7 @@ WELD_COLUMNS = (
     "RT Retest Result & Report-Rev & Date", "Test Result",
 )
 
-PACK_REF = "IIAFIELD-8-21-2026-17600252"
+PACK_REF = "NDEFIELD-8-21-2026-40300118"
 
 WELD_DEFAULTS = {
     "Test Pack # - Rev": "TP-1-1", "Test Pack Reference": PACK_REF,
@@ -56,7 +56,7 @@ HEAT_COLUMNS = ("Heat Number", "Material Name", "Product Form",
 
 HEAT_DEFAULTS = {
     "Heat Number": "70097", "Material Name": "6in Pipe", "Product Form": "PIPE",
-    "Pipe Fitting Type": "-", "Supplier": "Welspun", "Spec No.": "A106",
+    "Pipe Fitting Type": "-", "Supplier": "Northgate Tube", "Spec No.": "A106",
     "Alloy Type or Grade": "B", "P-No.": "1", "File Name": "70097-MTR.pdf",
     "Status": "Active",
 }
@@ -96,7 +96,7 @@ def download(tmp_path):
     altogether, which is a different thing from an export with no rows.
     """
     def build(welds=(), heats=(), stamps=()):
-        root = tmp_path / "BD16 PAD C"
+        root = tmp_path / "Merlin 3 Pad C"
         root.mkdir(exist_ok=True)
         if welds is not None:
             _csv(root / "TestPackExport.csv", WELD_COLUMNS, WELD_DEFAULTS,
@@ -108,7 +108,7 @@ def download(tmp_path):
             _csv(root / "AnnotationAttachments_TEST 1.csv", STAMP_COLUMNS,
                  STAMP_DEFAULTS, stamps or [{}], raw=("Text inside bubble",))
         db = Database(tmp_path / "a.db")
-        project_id, _stats = index_project(db, "BD16", root)
+        project_id, _stats = index_project(db, "Merlin 3", root)
         load.extract(db, project_id)
         return db, project_id
     return build
@@ -139,7 +139,7 @@ def test_the_drawing_does_not_end_up_in_the_notes_column(download):
 
 
 def test_a_test_pack_is_a_segment_on_the_coverage_tab(download):
-    # A WeldTrace register cites CQ-20260331RT01, which is not an NdeId and is
+    # A WeldTrace register cites NX-20260331RT01, which is not an NdeId and is
     # deliberately kept out of nde_id. Counting only the ids would show a fully
     # examined pack at 0% referenced - a clean package reported as an empty one.
     from weldaudit.rules.nde_coverage import coverage_summary
@@ -369,7 +369,8 @@ def test_a_report_number_one_digit_off_the_pack_reference(download):
     # The sample download's twenty-four-weld version of this: one dropped
     # digit, propagated across a whole pack, and every row looks right beside
     # the last.
-    wrong = PACK_REF.replace("17600252", "1700252")
+    wrong = PACK_REF.replace("40300118", "4030118")
+    assert wrong != PACK_REF, "the fixture must actually drop a digit"
     db, pid = download(welds=[
         {"RT Result & Report-Rev & Date": f"Passed;{wrong}-0;Aug-21-2026;"}])
     found = wt.report_reference_mismatch(db, pid, "r1")

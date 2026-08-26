@@ -210,7 +210,7 @@ class WeldTag:
         how it is stamped on the isometric, and neither is safe to normalise
         away outright:
 
-        * an ``A``/``B`` layer letter in front of the prefix.  On the BD16
+        * an ``A``/``B`` layer letter in front of the prefix.  On the Merlin 3
           download stripping it lifts stamp matches from 19 of 107 to 103; on
           the Hot Pass downloads the register numbers its own welds ``BPT-2``
           and ``BFW-4``, so stripping it unconditionally would break every
@@ -399,7 +399,7 @@ _RESULT_REPORT = re.compile(r"^(?P<report>.+?)-(?P<rev>\d+)$")
 
 
 def parse_result(value: str) -> tuple[str, str, str, str]:
-    """``'Passed;CQ-20260331RT01-0;Mar-31-2026;'`` -> verdict, report, rev, date."""
+    """``'Passed;NX-20260331RT01-0;Mar-31-2026;'`` -> verdict, report, rev, date."""
     parts = [clean(p) for p in clean(value).split(";")]
     verdict = parts[0] if parts else ""
     reference = parts[1] if len(parts) > 1 else ""

@@ -1339,7 +1339,7 @@ def coverage_summary(db: Database, project_id: int) -> list[dict]:
         entry["welds"] += 1
         # A weld cites its examination in `nde_id` where the reference is an
         # NdeId and in `nde_report` where it is not - a WeldTrace register
-        # cites `CQ-20260331RT01`, which has neither series nor sequence and
+        # cites `NX-20260331RT01`, which has neither series nor sequence and
         # is deliberately kept out of `nde_id`. Counting only the ids would
         # report a fully examined test pack at 0% referenced, which is the one
         # kind of wrong answer this figure must never give.
