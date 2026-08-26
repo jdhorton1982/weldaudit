@@ -52,7 +52,13 @@ SECRETS = [
      "a hard-coded credential"),
 ]
 
-FORBIDDEN_LIST = Path("private/forbidden.txt")
+#: Anchored to this file rather than to the working directory. A git hook is
+#: not promised a particular cwd, and anyone running the check by hand runs it
+#: from wherever they happen to be. Relative, it resolved to nothing from a
+#: subdirectory, :func:`site_patterns` returned no patterns at all, and the
+#: check passed everything having never consulted the site list - a guard that
+#: quietly becomes a no-op, which is worse than not having one.
+FORBIDDEN_LIST = Path(__file__).resolve().parent.parent / "private" / "forbidden.txt"
 
 
 def staged() -> list[str]:
@@ -80,7 +86,16 @@ def contents(path: str) -> str:
 
 
 def site_patterns() -> list[tuple[re.Pattern, str]]:
+    """The names that must not be published, or nothing - said out loud.
+
+    No list is a legitimate state: it is gitignored, so a fresh clone has none
+    and there is nothing to check against. What is not legitimate is finding
+    that out silently. This check passing means one of two very different
+    things, and the difference is worth one line on stderr.
+    """
     if not FORBIDDEN_LIST.is_file():
+        print(f"note: no {FORBIDDEN_LIST.name} beside this check, so staged files "
+              f"were not compared against any customer's names.", file=sys.stderr)
         return []
     out = []
     for line in FORBIDDEN_LIST.read_text(encoding="utf-8").splitlines():
