@@ -45,7 +45,22 @@ if exist build rmdir /s /q build
 
 REM The version, asked of the program rather than typed here, so the exe, the
 REM installer and any release published from them cannot disagree.
-for /f "delims=" %%V in ('"%PY%" -c "import weldaudit;print(weldaudit.__version__)"') do set VER=%%V
+REM
+REM Read through a file rather than with `for /f`. Backquoting a quoted
+REM interpreter path inside `for /f` runs it through a second cmd, which
+REM strips the first and last quote of what it was given and leaves
+REM `python.exe" -c "import weldaudit` as the program to run. It fails
+REM silently into an empty VER, and an empty VER stamps the folder build with
+REM nothing and builds the installer as version "". Caught while cutting
+REM 0.4.0, having mis-stamped every installer before it.
+"%PY%" -c "import weldaudit;print(weldaudit.__version__)" > "%TEMP%\weldaudit-build-version.txt" || goto :fail
+set /p VER=<"%TEMP%\weldaudit-build-version.txt"
+del "%TEMP%\weldaudit-build-version.txt"
+if "%VER%"=="" (
+  echo Could not read the version out of the program. Build stopped, because
+  echo an unversioned build cannot be published.
+  goto :fail
+)
 echo Building WeldAudit %VER%.
 
 if "%WHAT%"=="installer" goto :folder

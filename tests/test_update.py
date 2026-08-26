@@ -31,6 +31,21 @@ from weldaudit.update import (  # noqa: E402
 )
 
 
+@pytest.fixture(autouse=True)
+def only_look_where_the_test_says(monkeypatch):
+    """Keep the search off this machine's own folders.
+
+    ``places`` deliberately sweeps every OneDrive and every removable drive,
+    which is right in the program and wrong in a test: the moment a real
+    release folder existed on the developer's machine, six tests asserting
+    "nothing on offer" found 0.3.0 and failed. The same trap the readings
+    cache fell into when a real .wacache appeared on a USB stick. A test must
+    describe the program, not the desk it was written at.
+    """
+    monkeypatch.setattr(update, "places",
+                        lambda extra=None: [Path(extra)] if extra else [])
+
+
 @pytest.fixture
 def build(tmp_path):
     """Something shaped like a folder build."""
