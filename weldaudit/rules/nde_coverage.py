@@ -448,6 +448,38 @@ def sheet_without_weld(db: Database, project_id: int, run_id: str) -> list[Findi
     return findings
 
 
+#: A run of shots numbered as they are taken is close to unbroken. A "series"
+#: with most of its numbers absent is not a sequence at all, and its holes are
+#: not missing paperwork. Used only where there is no as-built to check the
+#: prefixes against.
+SEQUENCE_DENSITY = 0.90
+
+
+def weld_numbered_prefixes(db: Database, project_id: int) -> set[str]:
+    """Prefixes whose numbers are weld ids rather than a shot sequence.
+
+    Reader sheets on these packages are numbered by the weld they examine, not
+    by the order the shots were taken. When that is so, a "gap" is a weld that
+    was never radiographed -- which is the normal condition of a line, since
+    only a share of joints are shot -- and reporting each one as a missing
+    sheet buries the real findings. One job produced 215 of these against 94
+    genuine findings.
+
+    Detected rather than assumed: a prefix that also appears in the as-built
+    weld stamps is the weld numbering. Nothing is suppressed on a job whose
+    NDE really is its own sequence, which is where the check earns its keep.
+    """
+    rows = db.q(
+        "SELECT DISTINCT weld_tag FROM weldtrace_stamp WHERE project_id=?",
+        (project_id,))
+    out = set()
+    for r in rows:
+        m = re.match(r"([A-Za-z]+)-?\d+", str(r["weld_tag"] or ""))
+        if m:
+            out.add(m.group(1).upper())
+    return out
+
+
 @register("NDE-04", "Gap in NDE report sequence")
 def sequence_gap(db: Database, project_id: int, run_id: str) -> list[Finding]:
     """A hole in a consecutively numbered series of shots.
@@ -466,10 +498,24 @@ def sequence_gap(db: Database, project_id: int, run_id: str) -> list[Finding]:
     is worked out.
     """
     findings: list[Finding] = []
+    weld_numbered = weld_numbered_prefixes(db, project_id)
     for (prefix, _idx), shots in sorted(_series_groups(db, project_id).items()):
+        # The numbers are weld ids, so the holes are joints that were never
+        # shot. NDE-02 still catches the case that matters -- a weld citing a
+        # report that no sheet carries -- and it reads what the map says
+        # instead of inferring a run from the numbering.
+        if prefix.upper() in weld_numbered:
+            continue
         ids = [NdeId(r["prefix"], r["number"], r["suffix"] or "") for r in shots]
         missing_ids = gaps(ids)
         if not missing_ids:
+            continue
+        # No as-built to check the prefix against, so fall back on the shape of
+        # the run itself: a sequence with a third of its numbers absent was
+        # never a sequence.
+        lo_n, hi_n, _n = sequences(ids)[prefix]
+        span = hi_n - lo_n + 1
+        if span > 0 and len({i.number for i in ids}) / span < SEQUENCE_DENSITY:
             continue
         label = series_label(prefix, shots)
         segs = sorted({s for r in shots for s in (r["segments"] or "").split("; ") if s})

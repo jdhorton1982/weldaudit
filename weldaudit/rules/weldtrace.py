@@ -23,6 +23,7 @@ sides in memory, and writes down which weld each stamp was matched to.
 from __future__ import annotations
 
 import json
+import re
 from collections import defaultdict
 
 from ..db import Database
@@ -559,6 +560,26 @@ def result_unclear(db: Database, project_id: int, run_id: str) -> list[Finding]:
     return findings
 
 
+def same_report(a: str, b: str) -> bool:
+    """Whether two report numbers name the same report.
+
+    The parts are compared as a set, because the same number is written with
+    the vendor first in one system and last in the other:
+    ``VENDOR-TV-20260101RT01`` and ``TV-20260101RT01-VENDOR`` are one
+    report, not a mistype. Comparing the strings reported sixteen welds on a
+    real job for a difference that was only in the ordering.
+
+    A dropped or altered character still differs, which is the whole point:
+    ``...-1400333`` against ``...-14400333`` remains a mismatch.
+    """
+    # Sorted, not a set: a set calls A-A-B and A-B-B the same report, and a
+    # repeated component is exactly the kind of difference worth keeping.
+    def parts(s: str) -> list[str]:
+        return sorted(p for p in re.split(r"[-\s_]+", (s or "").upper()) if p)
+
+    return bool(parts(a)) and parts(a) == parts(b)
+
+
 @register("WT-17", "Report number disagrees with the test pack reference")
 def report_reference_mismatch(db: Database, project_id: int, run_id: str) -> list[Finding]:
     """An examination citing a report the pack was not issued under.
@@ -578,8 +599,10 @@ def report_reference_mismatch(db: Database, project_id: int, run_id: str) -> lis
         if not reference:
             continue
         wrong = [e for e in exams.get(w["id"], [])
-                 if e["report"] and e["report"] != reference
-                 and split_trailing_revision(e["report"])[0] != reference]
+                 if e["report"]
+                 and not same_report(e["report"], reference)
+                 and not same_report(split_trailing_revision(e["report"])[0],
+                                     reference)]
         if not wrong:
             continue
         findings.append(_finding(

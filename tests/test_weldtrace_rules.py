@@ -383,6 +383,45 @@ def test_a_report_cited_with_a_revision_still_matches_its_pack(download):
     assert wt.report_reference_mismatch(db, pid, "r1") == []
 
 
+def test_the_same_number_written_vendor_last_is_not_a_mistype(download):
+    """One report, two house styles.
+
+    A vendor's own system writes VENDOR-TV-...RT01 and the pack is issued
+    as TV-...RT01-VENDOR. Compared as strings that is a mismatch, and it
+    reported sixteen welds on a real job for a difference that was only in the
+    order the parts were written.
+    """
+    parts = PACK_REF.split("-")
+    reordered = "-".join(parts[1:] + parts[:1])
+    assert reordered != PACK_REF, "the fixture must actually reorder something"
+    db, pid = download(welds=[
+        {"RT Result & Report-Rev & Date": f"Passed;{reordered}-0;Aug-21-2026;"}])
+    assert wt.report_reference_mismatch(db, pid, "r1") == []
+
+
+def test_case_and_separators_do_not_make_a_mismatch(download):
+    db, pid = download(welds=[
+        {"RT Result & Report-Rev & Date":
+         f"Passed;{PACK_REF.lower()}-0;Aug-21-2026;"}])
+    assert wt.report_reference_mismatch(db, pid, "r1") == []
+
+
+def test_reordering_does_not_hide_a_dropped_digit(download):
+    """The guard must not swallow the defect it sits next to."""
+    parts = PACK_REF.replace("40300118", "4030118").split("-")
+    wrong = "-".join(parts[1:] + parts[:1])
+    db, pid = download(welds=[
+        {"RT Result & Report-Rev & Date": f"Passed;{wrong}-0;Aug-21-2026;"}])
+    assert codes(wt.report_reference_mismatch(db, pid, "r1")) == ["WT-17"]
+
+
+def test_a_repeated_component_is_not_treated_as_the_same_report():
+    """Compared as a sorted list, not a set: A-A-B is not A-B-B."""
+    assert not wt.same_report("A-A-B", "A-B-B")
+    assert wt.same_report("A-B-C", "C-A-B")
+    assert not wt.same_report("", "A-1")
+
+
 def test_a_weld_nothing_was_asked_of(download):
     db, pid = download(welds=[{"RT Test Requested": "No",
                                "RT Result & Report-Rev & Date": "-"}])
