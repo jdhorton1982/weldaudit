@@ -139,3 +139,33 @@ def test_the_window_no_longer_hands_documents_to_a_browser():
         assert "target=" not in line, line.strip()
     assert "viewDoc(" in page
     assert 'id="viewer-frame"' in page
+
+
+# -- nothing the window shows may be cached ---------------------------------
+
+def test_the_page_and_the_polled_endpoints_are_never_cached(app):
+    """An update replaces the file behind a fixed address.
+
+    The interface is one page at one URL, and updating swaps the file without
+    the URL changing. With no cache directive the window guesses, and a copy
+    opened after an update can show the previous interface while running the
+    new program — the exe is new, the file is new, the server returns the new
+    page, and the screen does not.
+
+    A cached `/api/status` is a progress bar that never moves, and a cached
+    `/api/update` is an update that is never offered.
+    """
+    client, _add, _tmp = app
+    for path in ("/", "/api/status", "/api/update"):
+        said = client.get(path).headers.get("cache-control", "")
+        assert "no-store" in said, f"{path} may be cached: {said!r}"
+
+
+def test_a_served_document_is_not_cached_either(app):
+    # A corrected reading, or a certificate replaced on disk, must not be
+    # masked by a copy the window kept.
+    client, add, _tmp = app
+    r = client.get(f"/api/document/{add('70097-MTR.pdf')}")
+    assert "no-store" in r.headers.get("cache-control", "")
+    # and it is still inline, so the viewer can draw it
+    assert r.headers["content-disposition"].startswith("inline")

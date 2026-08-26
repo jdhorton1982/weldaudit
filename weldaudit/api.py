@@ -203,6 +203,29 @@ def create_app(db_path: str | Path) -> FastAPI:
     db = Database(db_path)
     job = _Job()
 
+    @app.middleware("http")
+    async def never_cache(request, call_next):
+        """Tell the window not to keep any of this.
+
+        The interface is one page served from a fixed address, and an update
+        replaces the file behind that address without the address changing.
+        Nothing here said how long a response stayed good, so WebView2 applied
+        its own guess - and a window opened after an update could show the
+        previous interface out of cache while running the new program. That is
+        exactly as confusing as it sounds: the exe is new, the file on disk is
+        new, the server returns the new page, and the screen does not.
+
+        The polled endpoints matter as much. A cached `/api/status` is a
+        progress bar that never moves; a cached `/api/update` is an update
+        that is never offered.
+
+        Everything here is local, so caching buys nothing worth that.
+        """
+        response = await call_next(request)
+        response.headers["Cache-Control"] = "no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        return response
+
     # -- pages -------------------------------------------------------------
 
     @app.get("/logo.svg")
