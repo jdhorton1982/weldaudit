@@ -129,6 +129,10 @@ class _Job:
         self.message = ""
         self.error: str | None = None
         self.project_id: int | None = None
+        #: Where the run is spending its time, as `pipeline.run` reports it.
+        #: Kept after the run finishes so the gauges still read afterwards -
+        #: how long it took is the question people ask once it has.
+        self.timing: dict = {}
 
     def set(self, **kw: Any) -> None:
         with self.lock:
@@ -140,7 +144,7 @@ class _Job:
             return {
                 "running": self.running, "stage": self.stage,
                 "message": self.message, "error": self.error,
-                "project_id": self.project_id,
+                "project_id": self.project_id, "timing": self.timing,
             }
 
 
@@ -320,12 +324,14 @@ def create_app(db_path: str | Path) -> FastAPI:
         name = req.name or root.name
 
         def work() -> None:
-            job.set(running=True, error=None, stage="starting", message="", project_id=None)
+            job.set(running=True, error=None, stage="starting", message="",
+                    project_id=None, timing={})
             try:
                 result = run(
                     db, name, root,
                     only_files=[str(p) for p in picked] if picked else None,
                     progress=lambda stage, msg: job.set(stage=stage, message=msg),
+                    on_timing=lambda t: job.set(timing=t),
                 )
                 job.set(project_id=result.project_id, stage="done",
                         message=f"{len(result.findings):,} findings")

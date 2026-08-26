@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -31,6 +32,8 @@ class RunResult:
     index: IndexStats
     counts: dict[str, int] = field(default_factory=dict)
     findings: list[dict] = field(default_factory=list)
+    #: Where the run spent its time — see `run`. Empty for a run nobody timed.
+    timing: dict = field(default_factory=dict)
 
     @property
     def by_severity(self) -> dict[str, int]:
@@ -53,8 +56,61 @@ def run(
     only_files: list[str] | None = None,
     aml_workbook: str | Path | None = None,
     progress: Progress | None = None,
+    on_timing: Callable[[dict], None] | None = None,
 ) -> RunResult:
+    # Where the time actually goes. Every stage of a run already announces
+    # itself through `say`, so timing them is a matter of noticing when one
+    # announcement replaces another - no instrumentation scattered through the
+    # steps, and nothing to keep in step when a step is added.
+    #
+    # It is worth knowing rather than decoration. An audit that takes four
+    # minutes is four minutes of somebody waiting, and the only way to argue
+    # about which part deserves the work is to be able to see it. Extract is
+    # most of it, and within extract it is the readers that open documents.
+    clock = time.monotonic
+    began = clock()
+    phases: dict[str, dict] = {}
+    order: list[str] = []
+    open_step: dict[str, object] = {}
+
+    def close_step(now: float) -> None:
+        if not open_step:
+            return
+        took = now - float(open_step["at"])
+        stage = str(open_step["stage"])
+        phase = phases.setdefault(stage, {"seconds": 0.0, "steps": []})
+        phase["seconds"] += took
+        phase["steps"].append({"name": open_step["message"],
+                               "seconds": round(took, 2)})
+
+    def timing() -> dict:
+        now = clock()
+        live = str(open_step.get("stage") or "")
+        out = []
+        for stage in order:
+            phase = phases.get(stage, {"seconds": 0.0, "steps": []})
+            seconds = phase["seconds"]
+            steps = list(phase["steps"])
+            if stage == live:
+                # The step in flight is counted as it runs, so a gauge moves
+                # during a long reader rather than jumping when it finishes.
+                running = now - float(open_step["at"])
+                seconds += running
+                steps.append({"name": open_step["message"],
+                              "seconds": round(running, 2), "running": True})
+            out.append({"stage": stage, "seconds": round(seconds, 2),
+                        "steps": steps, "running": stage == live})
+        return {"elapsed": round(now - began, 2), "phases": out}
+
     def say(stage: str, msg: str) -> None:
+        now = clock()
+        close_step(now)
+        if stage not in phases:
+            phases[stage] = {"seconds": 0.0, "steps": []}
+            order.append(stage)
+        open_step.update(stage=stage, message=msg, at=now)
+        if on_timing:
+            on_timing(timing())
         if progress:
             progress(stage, msg)
 
@@ -238,8 +294,13 @@ def run(
         )
 
     say("done", f"{len(found):,} findings")
+    close_step(clock())
+    open_step.clear()
+    if on_timing:
+        on_timing(timing())
+
     return RunResult(project_id=project_id, run_id=run_id, index=stats,
-                     counts=counts, findings=found)
+                     counts=counts, findings=found, timing=timing())
 
 
 def summary(db: Database, project_id: int) -> dict:

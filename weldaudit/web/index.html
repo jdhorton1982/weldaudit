@@ -103,6 +103,53 @@
      open beside it. */
   @media print { #viewer { display: none; } }
 
+  /* The timing deck. Sits above the cards, and only once there is something
+     to show — an empty set of rings before the first run is decoration. */
+  #deck {
+    display: flex; align-items: center; gap: 24px; flex: none;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 14px 18px; margin-bottom: 16px;
+  }
+  #deck[hidden] { display: none; }
+  .deck-total { display: flex; flex-direction: column; gap: 1px; min-width: 128px;
+                padding-right: 24px; border-right: 1px solid var(--line); }
+  .deck-total small, .deck-steps small {
+    color: var(--muted); text-transform: uppercase; font-size: 11px;
+    letter-spacing: .6px;
+  }
+  .deck-total b { font-family: ui-monospace, Consolas, monospace; font-size: 28px;
+                  line-height: 1.15; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .deck-total span { font-size: 12px; color: var(--muted); }
+  .deck-gauges { display: flex; gap: 22px; flex: none; }
+  .gauge { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .gauge .dial { position: relative; width: 92px; height: 92px; }
+  .gauge .read {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 0;
+  }
+  .gauge .read b { font-family: ui-monospace, Consolas, monospace; font-size: 17px;
+                   font-weight: 600; font-variant-numeric: tabular-nums; }
+  .gauge .read i { font-style: normal; font-size: 10px; color: var(--muted);
+                   letter-spacing: .4px; }
+  .gauge .name { text-transform: uppercase; font-size: 11px; letter-spacing: .6px;
+                 font-weight: 600; }
+  .gauge circle { transition: stroke-dasharray .2s linear, stroke .25s ease; }
+  .deck-steps { flex: 1 1 auto; min-width: 0; align-self: stretch;
+                border-left: 1px solid var(--line); padding-left: 22px;
+                display: flex; flex-direction: column; gap: 8px; justify-content: center; }
+  #deck-steps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 4px 20px; }
+  .deck-step { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 12px; }
+  .deck-step .what { flex: 1 1 auto; min-width: 0; overflow: hidden;
+                     text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+  .deck-step.on .what { color: var(--accent); }
+  .deck-step.done .what { color: var(--ink); }
+  .deck-step .secs { font-family: ui-monospace, Consolas, monospace; font-size: 11px;
+                     font-variant-numeric: tabular-nums; color: var(--muted);
+                     width: 40px; text-align: right; flex: none; }
+  @media (max-width: 1100px) { .deck-steps { display: none; } }
+  @media print { #deck { display: none; } }
+
   /* The agreements. Covering, and with no way past but through: an audit
      opens somebody else's package, and the terms are the condition of it. */
   #agree {
@@ -412,6 +459,8 @@
   <button id="ocr" title="Read this job's scanned certificates on this machine — free, offline">Read scans</button>
   <span id="progress" style="color:var(--muted)"></span>
   <span style="flex:1"></span>
+  <button id="deck-toggle" title="Show where the audit spends its time"
+          hidden>Timing</button>
   <select id="fmt" title="Report format">
     <option value="xlsx">Excel</option>
     <option value="csv">CSV</option>
@@ -466,6 +515,23 @@
      answer is how you lose track of which weld you were on. -->
 <div id="workspace">
 <main>
+  <!-- Where the run spends its time. One ring per pipeline phase, each split
+       into a segment per step, sized by how long that step took. Filled from
+       /api/status, which carries the timings pipeline.run measures — so these
+       are the real seconds, not an animation of a percentage. -->
+  <div id="deck" hidden>
+    <div class="deck-total">
+      <small id="deck-total-label">Not run</small>
+      <b id="deck-total"></b>
+      <span id="deck-total-sub"></span>
+    </div>
+    <div class="deck-gauges" id="deck-gauges"></div>
+    <div class="deck-steps">
+      <small id="deck-steps-title">Where the time goes</small>
+      <div id="deck-steps"></div>
+    </div>
+  </div>
+
   <div class="cards" id="cards"></div>
 
   <nav>
@@ -1350,9 +1416,99 @@ $('#ocr').onclick = async () => {
   }
 };
 
+// ── the timing deck ────────────────────────────────────────────────────────
+//
+// One ring per pipeline phase, each split into a segment per step and sized
+// by how long that step actually took. The numbers come from
+// pipeline.run — real seconds, measured, not an animation of a percentage.
+//
+// A 270-degree arc: r=34 gives a circumference of 213.6, three quarters of
+// which is 160.2. Segments are butt-capped so the gaps between them read;
+// the track is capped the same way or it overhangs them at both ends.
+const ARC = 160.2, CIRC = 213.6, SEG_GAP = 1.1;
+const PHASE_NAME = { index: 'Index', extract: 'Extract', reconcile: 'Reconcile',
+                     done: 'Done', starting: 'Starting' };
+
+function paintDeck(timing) {
+  const deck = $('#deck');
+  // "starting" and "done" are markers, not work. A ring reading 0.0 sec for
+  // the moment the run announced itself is noise beside three real ones.
+  const phases = ((timing && timing.phases) || [])
+    .filter(p => p.stage !== 'done' && p.stage !== 'starting');
+  if (!phases.length) { deck.hidden = true; return; }
+
+  // Rings are scaled against the longest phase, not against the total: three
+  // rings where two are hairlines says less than three that fill.
+  const longest = Math.max(...phases.map(p => p.seconds), 0.1);
+
+  $('#deck-gauges').innerHTML = phases.map(p => {
+    const share = Math.min(1, p.seconds / longest);
+    let at = 0;
+    const segs = (p.steps || []).map(step => {
+      const of = p.seconds > 0 ? step.seconds / p.seconds : 0;
+      const from = at; at += of;
+      const len = ARC * share * of;
+      const drawn = len > SEG_GAP ? len - SEG_GAP : len;
+      const colour = step.running ? 'var(--accent)'
+                   : (p.running ? 'var(--accent)' : 'var(--ok)');
+      return `<circle cx="50" cy="50" r="34" fill="none" stroke="${colour}"
+                stroke-width="9" stroke-linecap="butt"
+                stroke-dasharray="${drawn.toFixed(2)} ${CIRC}"
+                stroke-dashoffset="${(-(ARC * share * from)).toFixed(2)}"
+                transform="rotate(135 50 50)"/>`;
+    }).join('');
+    return `<div class="gauge">
+      <div class="dial">
+        <svg viewBox="0 0 100 100" width="92" height="92">
+          <circle cx="50" cy="50" r="34" fill="none" stroke="var(--line)"
+                  stroke-width="9" stroke-linecap="butt"
+                  stroke-dasharray="${ARC} ${CIRC}" transform="rotate(135 50 50)"/>
+          ${segs}
+        </svg>
+        <div class="read">
+          <b>${p.seconds.toFixed(1)}</b><i>sec</i>
+        </div>
+      </div>
+      <span class="name" style="color:${p.running ? 'var(--accent)' : 'var(--ink)'}"
+        >${esc(PHASE_NAME[p.stage] || p.stage)}</span>
+    </div>`;
+  }).join('');
+
+  // The breakdown follows the phase in flight, and settles on the slowest one
+  // when the run is over — which is the phase worth looking at afterwards.
+  const live = phases.find(p => p.running);
+  const shown = live || phases.reduce((a, b) => (b.seconds > a.seconds ? b : a), phases[0]);
+  $('#deck-steps-title').textContent =
+    `${PHASE_NAME[shown.stage] || shown.stage} — where the time goes`;
+  const steps = (shown.steps || []).slice().sort((a, b) => b.seconds - a.seconds).slice(0, 8);
+  $('#deck-steps').innerHTML = steps.map(s => `
+    <div class="deck-step ${s.running ? 'on' : 'done'}">
+      <span class="what" title="${esc(s.name)}">${esc(s.name)}</span>
+      <span class="secs">${s.seconds.toFixed(1)}s</span>
+    </div>`).join('');
+
+  const total = timing.elapsed || 0;
+  const running = phases.some(p => p.running);
+  $('#deck-total-label').textContent = running ? 'Elapsed' : 'Total';
+  $('#deck-total').textContent = total.toFixed(1) + 's';
+  $('#deck-total').style.color = running ? 'var(--ink)' : 'var(--ok)';
+  $('#deck-total-sub').textContent = running
+    ? (PHASE_NAME[(live || {}).stage] || '').toLowerCase()
+    : `across ${phases.length} phase${phases.length === 1 ? '' : 's'}`;
+
+  deck.hidden = false;
+  $('#deck-toggle').hidden = false;
+}
+
+$('#deck-toggle').onclick = () => {
+  const deck = $('#deck');
+  deck.hidden = !deck.hidden;
+};
+
 async function poll() {
   const s = await api('/api/status');
   $('#progress').textContent = s.running ? `${s.stage}: ${s.message}` : '';
+  paintDeck(s.timing);
   if (s.running) return setTimeout(poll, 400);
   $('#go').disabled = false;
   $('#ocr').disabled = false;
