@@ -452,6 +452,60 @@ def create_app(db_path: str | Path) -> FastAPI:
         threading.Thread(target=work, daemon=True).start()
         return {"started": True}
 
+    @app.get("/api/whoami")
+    def whoami() -> dict:
+        """Who is answering on this port, and is it still the installed build.
+
+        Two versions, and the difference between them is the point.
+
+        ``code`` is compiled into the module that is executing. ``installed``
+        is read off disk, and an update replaces that file under a process
+        that is still running. So a copy left open across an update reports
+        the new number everywhere it is asked - the stamp is on disk, and the
+        page it serves is re-read from disk per request - while running the
+        old code and showing the old window.
+
+        That is not a hypothetical. It cost an afternoon: every check said the
+        new version, the screen said otherwise, and both were telling the
+        truth about different things.
+        """
+        import os
+
+        from . import __version__
+        from .update import current_version
+
+        installed = current_version()
+        return {
+            "app": "weldaudit",
+            "pid": os.getpid(),
+            "code": __version__,
+            "installed": installed,
+            # True when the files on disk have moved on without us.
+            "stale": bool(installed and installed != __version__),
+        }
+
+    @app.post("/api/raise")
+    def raise_window() -> dict:
+        """Bring this copy's window to the front.
+
+        What a second launch asks for instead of opening a browser. A browser
+        keeps a cache that outlives the program, so handing somebody one is
+        how a correct install comes to look like a failed one.
+        """
+        try:
+            import webview
+
+            windows = list(webview.windows)
+            for window in windows:
+                window.restore()
+                window.show()
+            # `bool(windows)`, not True: with no windows the loop above does
+            # nothing at all, and reporting success for that would have the
+            # launcher stay quiet instead of telling somebody where to look.
+            return {"raised": bool(windows)}
+        except Exception:             # noqa: BLE001 - no webview here at all
+            return {"raised": False}
+
     @app.get("/api/status")
     def status() -> dict:
         return job.snapshot()

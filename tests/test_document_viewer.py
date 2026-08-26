@@ -241,3 +241,65 @@ def test_the_page_paints_the_deck_when_a_project_is_opened():
             / "weldaudit" / "web" / "index.html").read_text(encoding="utf-8")
     assert "/api/timing?project_id=" in page
     assert "paintDeck" in page
+
+
+# -- knowing when the process is behind the disk ----------------------------
+
+def test_whoami_names_the_program_and_both_versions(app):
+    client, _add, _tmp = app
+    me = client.get("/api/whoami").json()
+    assert me["app"] == "weldaudit"
+    assert me["pid"] > 0
+    assert me["code"]                      # compiled in — what is executing
+    assert "installed" in me               # read from disk — what is on disk
+    assert me["stale"] is False            # running from source, they agree
+
+
+def test_stale_is_true_when_the_disk_has_moved_on(app, monkeypatch):
+    """The afternoon this cost.
+
+    An update replaces the files under a running copy. The stamp is read from
+    disk and the page is re-read per request, so the old process answers every
+    question with the new version while running the old code behind the old
+    window. Every check says it worked; the screen says it did not; both are
+    telling the truth about different things.
+    """
+    from weldaudit import api as api_module
+
+    client, _add, _tmp = app
+    monkeypatch.setattr("weldaudit.update.current_version", lambda: "9.9.9")
+    me = client.get("/api/whoami").json()
+    assert me["installed"] == "9.9.9"
+    assert me["code"] != "9.9.9"
+    assert me["stale"] is True
+    assert api_module                       # imported for the patch target
+
+
+def test_raise_reports_honestly_when_there_is_no_window(app):
+    # Served headless in a test, so there is no window to bring forward and it
+    # says so rather than claiming success.
+    client, _add, _tmp = app
+    assert client.post("/api/raise").json() == {"raised": False}
+
+
+def test_the_launcher_identifies_what_is_on_the_port():
+    launcher = (Path(__file__).resolve().parents[1] / "app.py").read_text(encoding="utf-8")
+    assert "_who_is_serving" in launcher
+    assert "/api/whoami" in launcher
+    # The old behaviour: hand the user a browser, which keeps a cache that
+    # outlives the program. That is what made a good install look bad.
+    live = [ln for ln in launcher.splitlines()
+            if "webbrowser.open" in ln and not ln.strip().startswith("#")]
+    for line in live:
+        assert "_already_running" not in line, line
+    assert "_raise_existing_window" in launcher
+
+
+def test_the_page_warns_before_it_offers():
+    page = (Path(__file__).resolve().parents[1]
+            / "weldaudit" / "web" / "index.html").read_text(encoding="utf-8")
+    assert "warnIfStale" in page
+    # Being behind the disk beats being behind the release folder: offering a
+    # new release to a window already running behind the installed one is not
+    # the message that helps.
+    assert page.index("warnIfStale") < page.index("async function offerTheUpdate")

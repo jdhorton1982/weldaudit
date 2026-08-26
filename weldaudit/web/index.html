@@ -1931,6 +1931,24 @@ offerTheReadings();
 // nothing to ask on every start, and there is no server and no password.
 let updateWavedAway = null;      // the version somebody pressed Later on
 
+// An update that installed underneath a window that was already open. The
+// files on disk have moved on; this process has not. It reports the new
+// version everywhere it is asked — the stamp is read from disk, and the page
+// is re-read per request — while running the old code behind the old window.
+// Nothing said so, and it looked exactly like an update that never happened.
+async function warnIfStale() {
+  let me;
+  try { me = await api('/api/whoami'); } catch { return; }
+  if (!me.stale) return;
+  $('#update-text').innerHTML =
+    `WeldAudit <b>${esc(me.installed)}</b> has been installed, but this window `
+    + `is still running <b>${esc(me.code)}</b>. Close it and open WeldAudit `
+    + `again to finish.`;
+  $('#update-do').hidden = true;
+  $('#update-hide').onclick = () => { $('#update-notice').hidden = true; };
+  $('#update-notice').hidden = false;
+}
+
 async function offerTheUpdate() {
   let r;
   try { r = await api('/api/update'); } catch { return; }
@@ -1977,10 +1995,17 @@ const UPDATE_EVERY = 30 * 60 * 1000;
 setInterval(() => {
   // Nothing to say while an update is already on screen, or mid-install.
   if (!$('#update-notice').hidden) return;
-  offerTheUpdate();
+  warnIfStale().then(() => {
+    if ($('#update-notice').hidden) offerTheUpdate();
+  });
 }, UPDATE_EVERY);
 
-offerTheUpdate();
+// Being out of date with the disk beats being out of date with the folder:
+// no amount of offering a new release helps a window that is already running
+// behind the one installed.
+warnIfStale().then(() => {
+  if ($('#update-notice').hidden) offerTheUpdate();
+});
 
 // ---------------------------------------------------------------------------
 // The mark, asking something

@@ -44,6 +44,54 @@ def _already_running(host: str, port: int) -> bool:
         return probe.connect_ex((host, port)) == 0
 
 
+def _who_is_serving(host: str, port: int, timeout: float = 2.0) -> dict | None:
+    """What is on the port, or None if it is not a WeldAudit.
+
+    ``_already_running`` can only say that *something* answers. That was
+    enough while the only thing that could be there was another copy of this
+    program at the same version; it stopped being enough the moment an update
+    could leave an older copy holding the port.
+    """
+    import json
+    import urllib.request
+
+    def ask(path: str) -> dict | None:
+        try:
+            with urllib.request.urlopen(  # noqa: S310 - localhost, fixed port
+                    f"http://{host}:{port}{path}", timeout=timeout) as answer:
+                said = json.loads(answer.read(4096).decode("utf-8"))
+        except Exception:             # noqa: BLE001 - anything means "not this"
+            return None
+        return said if isinstance(said, dict) else None
+
+    if (said := ask("/api/whoami")) and said.get("app") == "weldaudit":
+        return said
+
+    # No /api/whoami means a WeldAudit older than the release that added it,
+    # which is every copy in the field today. That is precisely the case worth
+    # naming - an old copy holding the port is the reason this exists - so it
+    # must not be mistaken for a stranger on the port. `/api/status` is the
+    # oldest route that answers in a shape only this program produces.
+    older = ask("/api/status")
+    if older is not None and {"running", "stage", "project_id"} <= set(older):
+        return {"app": "weldaudit", "pid": None, "code": "an older version",
+                "installed": "", "stale": True}
+    return None
+
+
+def _raise_existing_window(host: str, port: int, timeout: float = 2.0) -> bool:
+    """Ask the copy that owns the window to bring it to the front."""
+    import urllib.request
+
+    try:
+        request = urllib.request.Request(
+            f"http://{host}:{port}/api/raise", method="POST")
+        with urllib.request.urlopen(request, timeout=timeout) as answer:  # noqa: S310
+            return answer.status == 200
+    except Exception:                 # noqa: BLE001 - an older copy has no such route
+        return False
+
+
 def _wait_until_serving(server, wait_for: float = 30.0) -> bool:
     """Block until *our* server has started.
 
@@ -178,8 +226,34 @@ def main() -> int:
 
     url = f"http://{HOST}:{PORT}/"
     if _already_running(HOST, PORT):
+        who = _who_is_serving(HOST, PORT)
+
+        if who is None:
+            # Something that is not us. Opening a browser at it would show
+            # somebody else's program and call it WeldAudit.
+            _say(f"Something else is using port {PORT}, so WeldAudit cannot "
+                 f"start. Close it and try again.")
+            return 1
+
+        if who.get("stale"):
+            # The reason this whole check was rewritten. An older copy left
+            # open across an update keeps the port, and every question you ask
+            # it answers from disk: it reports the new version and serves the
+            # new page while running the old code behind an old window. The
+            # only cure is to close it, and nothing used to say so.
+            _say(f"An older WeldAudit ({who['code']}) is still open, and "
+                 f"{who['installed']} is installed. Close the open WeldAudit "
+                 f"window and start it again to finish updating.")
+            return 1
+
+        # Genuinely us, and current. Ask the copy that owns the window to
+        # bring it forward rather than opening a browser: a browser keeps a
+        # cache that outlives the program, which is how a correct install
+        # comes to look like a failed one.
         _say(f"WeldAudit is already open at {url}")
-        webbrowser.open(url)
+        if not _raise_existing_window(HOST, PORT):
+            _say("Could not bring the open window forward; look for it in the "
+                 "taskbar.")
         return 0
 
     import uvicorn
