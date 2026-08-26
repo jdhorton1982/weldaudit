@@ -169,3 +169,75 @@ def test_a_served_document_is_not_cached_either(app):
     assert "no-store" in r.headers.get("cache-control", "")
     # and it is still inline, so the viewer can draw it
     assert r.headers["content-disposition"].startswith("inline")
+
+
+# -- the timing outlives the run --------------------------------------------
+
+def test_a_project_never_audited_has_no_timing_and_says_so(app):
+    # The deck stays hidden rather than reading zero.
+    client, _add, _tmp = app
+    said = client.get("/api/timing?project_id=1").json()
+    assert said["timing"] == {}
+
+
+def test_the_timing_is_read_back_from_the_run_record(app, tmp_path):
+    """The bug this closes: gauges visible for the eleven seconds of a run.
+
+    Timing lived on the in-memory job, so closing the program threw it away.
+    Open WeldAudit the next morning and the deck was hidden — which looks
+    exactly like a build where the feature was never added, and was reported
+    as one.
+    """
+    import json
+
+    client, _add, _t = app
+    db = Database(tmp_path / "v.db")
+    measured = {"elapsed": 5.16, "phases": [
+        {"stage": "index", "seconds": 0.08, "steps": [
+            {"name": "Scanning", "seconds": 0.08}], "running": False},
+        {"stage": "extract", "seconds": 5.02, "steps": [
+            {"name": "Loading approved materials list", "seconds": 5.01}],
+         "running": False}]}
+    with db.tx() as c:
+        c.execute("INSERT INTO run(id, project_id, started_at, finished_at, "
+                  "summary, timing) VALUES(?,?,?,?,?,?)",
+                  ("r1", 1, "2026-08-26T10:00:00+00:00",
+                   "2026-08-26T10:00:05+00:00", "{}", json.dumps(measured)))
+
+    said = client.get("/api/timing?project_id=1").json()
+    assert said["timing"]["elapsed"] == 5.16
+    assert [p["stage"] for p in said["timing"]["phases"]] == ["index", "extract"]
+    assert said["when"] == "2026-08-26T10:00:05+00:00"
+
+
+def test_the_newest_run_wins(app, tmp_path):
+    import json
+
+    client, _add, _t = app
+    db = Database(tmp_path / "v.db")
+    with db.tx() as c:
+        for rid, when, elapsed in [("old", "2026-08-01T09:00:00+00:00", 99.0),
+                                   ("new", "2026-08-26T10:00:05+00:00", 5.16)]:
+            c.execute("INSERT INTO run(id, project_id, started_at, finished_at,"
+                      " summary, timing) VALUES(?,?,?,?,?,?)",
+                      (rid, 1, when, when, "{}",
+                       json.dumps({"elapsed": elapsed, "phases": []})))
+    assert client.get("/api/timing?project_id=1").json()["timing"]["elapsed"] == 5.16
+
+
+def test_unreadable_timing_is_not_fatal(app, tmp_path):
+    # A row written by a version that stored something else there.
+    client, _add, _t = app
+    db = Database(tmp_path / "v.db")
+    with db.tx() as c:
+        c.execute("INSERT INTO run(id, project_id, started_at, finished_at,"
+                  " summary, timing) VALUES(?,?,?,?,?,?)",
+                  ("r1", 1, "x", "x", "{}", "not json"))
+    assert client.get("/api/timing?project_id=1").json()["timing"] == {}
+
+
+def test_the_page_paints_the_deck_when_a_project_is_opened():
+    page = (Path(__file__).resolve().parents[1]
+            / "weldaudit" / "web" / "index.html").read_text(encoding="utf-8")
+    assert "/api/timing?project_id=" in page
+    assert "paintDeck" in page

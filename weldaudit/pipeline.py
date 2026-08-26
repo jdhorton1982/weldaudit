@@ -282,25 +282,30 @@ def run(
     # them are not, and are put back here.
     db.reattach_comments(project_id)
 
+    # Settled before the row is written, or the last step of the last phase is
+    # missing from the record of how long the run took.
+    say("done", f"{len(found):,} findings")
+    close_step(clock())
+    open_step.clear()
+    measured = timing()
+    if on_timing:
+        on_timing(measured)
+
     with db.tx() as c:
         c.execute(
-            "INSERT OR REPLACE INTO run(id, project_id, started_at, finished_at, summary) "
-            "VALUES(?,?,?,?,?)",
+            "INSERT OR REPLACE INTO run"
+            "(id, project_id, started_at, finished_at, summary, timing) "
+            "VALUES(?,?,?,?,?,?)",
             (
                 run_id, project_id, started,
                 datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 json.dumps(counts),
+                json.dumps(measured),
             ),
         )
 
-    say("done", f"{len(found):,} findings")
-    close_step(clock())
-    open_step.clear()
-    if on_timing:
-        on_timing(timing())
-
     return RunResult(project_id=project_id, run_id=run_id, index=stats,
-                     counts=counts, findings=found, timing=timing())
+                     counts=counts, findings=found, timing=measured)
 
 
 def summary(db: Database, project_id: int) -> dict:

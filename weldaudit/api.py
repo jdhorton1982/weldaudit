@@ -6,6 +6,7 @@ poll progress rather than holding a request open for a minute.
 
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 import sys
@@ -454,6 +455,29 @@ def create_app(db_path: str | Path) -> FastAPI:
     @app.get("/api/status")
     def status() -> dict:
         return job.snapshot()
+
+    @app.get("/api/timing")
+    def timing(project_id: int) -> dict:
+        """How long the last audit of this project took, and where it went.
+
+        Read back from the run record rather than held in memory. "Why did
+        that take four minutes?" is a question asked after the fact, usually
+        the next morning, and an answer that exists only while the run is
+        happening is an answer nobody is present for. Before this the gauges
+        were visible for the eleven seconds of a run and gone afterwards -
+        which made a feature look like a missing one.
+        """
+        row = db.one(
+            "SELECT timing, finished_at FROM run WHERE project_id=? "
+            "ORDER BY finished_at DESC LIMIT 1", (project_id,))
+        if not row or not row["timing"]:
+            # A project audited before runs were timed. Nothing to show, and
+            # nothing wrong: the deck stays hidden rather than reading zero.
+            return {"timing": {}, "when": row["finished_at"] if row else None}
+        try:
+            return {"timing": json.loads(row["timing"]), "when": row["finished_at"]}
+        except ValueError:
+            return {"timing": {}, "when": row["finished_at"]}
 
     # -- findings ----------------------------------------------------------
 

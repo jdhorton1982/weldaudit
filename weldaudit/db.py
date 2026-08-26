@@ -842,7 +842,14 @@ CREATE TABLE IF NOT EXISTS run (
     project_id  INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE,
     started_at  TEXT,
     finished_at TEXT,
-    summary     TEXT
+    summary     TEXT,
+    -- Where the run spent its time, as JSON: phases, their steps, seconds.
+    -- Kept because it is the answer to a question asked *after* the run --
+    -- "why did that take four minutes?" -- and a figure that exists only
+    -- while the thing is happening is a figure nobody reads. Without this the
+    -- gauges were visible for the eleven seconds of a run and gone
+    -- afterwards, which made a feature look like a missing one.
+    timing      TEXT
 );
 """
 

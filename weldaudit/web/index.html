@@ -879,6 +879,14 @@ async function loadProjects(select) {
 
 async function selectProject(id) {
   state.project = id;
+  // How long this job's last audit took, from the run record. Painted on
+  // opening a project rather than only while one is running: "why did that
+  // take four minutes" is a question asked the next morning, and gauges that
+  // exist only during the run are gauges nobody is present for.
+  fetch('/api/timing?project_id=' + id)
+    .then(r => r.json())
+    .then(t => paintDeck(t.timing))
+    .catch(() => {});
   const projects = await api('/api/projects');
   const p = projects.find(x => x.id === id);
   if (p) {
