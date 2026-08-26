@@ -1,0 +1,10 @@
+# cmd reads a batch file by byte offset and needs the carriage returns to
+# find the end of a line. Without them it runs as far as the first goto and
+# then executes fragments of its own comments -- which is how four of the
+# five batch files here ended up unable to build anything.
+#
+# The pre-commit check refuses one that slips through; this stops git being
+# the thing that converts them.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf

@@ -5,4 +5,4 @@ manufacturers against the approved materials list, across whole projects at
 once.
 """
 
-__version__ = "0.4.9"
+__version__ = "0.5.0"

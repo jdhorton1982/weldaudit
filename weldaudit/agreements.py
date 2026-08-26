@@ -172,6 +172,19 @@ def record(db, document: Document, name: str, company: str,
     return cur.lastrowid
 
 
+def acceptance_of(db, document: Document):
+    """The record of this exact wording being accepted here, or None.
+
+    Matched on the hash as well as the key, so what comes back is the
+    acceptance of the text being shown rather than of an earlier revision
+    that happened to carry the same name.
+    """
+    return db.one(
+        "SELECT * FROM agreement_acceptance WHERE document_key=? AND sha256=? "
+        "ORDER BY accepted_at DESC LIMIT 1",
+        (document.key, document.sha256))
+
+
 def record_as_text(db) -> str:
     """The acceptances on this machine, as something a person can read and send.
 

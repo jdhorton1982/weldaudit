@@ -211,6 +211,72 @@ def test_an_unknown_document_is_a_404(client):
     assert r.status_code == 404
 
 
+# -- reading it again, afterwards -------------------------------------------
+#
+# The gate shows a document once and then never again, which left a tester who
+# had agreed to an NDA unable to see what they agreed to. That is the opposite
+# of what recording it was for: the first move in any argument about an
+# agreement is "show me what I signed". The wording, and who accepted it and
+# when, come back with every listing so the page can offer it.
+
+
+def test_an_accepted_document_says_who_accepted_it_and_when(client):
+    doc = client.get("/api/agreements").json()["documents"][0]
+    client.post("/api/agreements/accept", json={
+        "document_key": doc["key"], "sha256": doc["sha256"],
+        "name": "A Welder", "company": "Contractor Ltd"})
+
+    again = client.get("/api/agreements").json()["documents"][0]
+    assert again["accepted"] is True
+    assert again["accepted_by"] == "A Welder"
+    assert again["accepted_company"] == "Contractor Ltd"
+    assert again["accepted_at"]
+
+
+def test_the_wording_comes_back_with_it(client):
+    """Without the body there is nothing to re-read."""
+    doc = client.get("/api/agreements").json()["documents"][0]
+    client.post("/api/agreements/accept", json={
+        "document_key": doc["key"], "sha256": doc["sha256"], "name": "A Welder"})
+    again = client.get("/api/agreements").json()["documents"][0]
+    assert again["body"] == doc["body"]
+    assert again["sha256"] == doc["sha256"]
+
+
+def test_a_document_nobody_accepted_carries_no_acceptance(client):
+    doc = client.get("/api/agreements").json()["documents"][0]
+    assert "accepted_by" not in doc
+    assert "accepted_at" not in doc
+
+
+def test_the_acceptance_returned_is_of_the_wording_on_offer(client, papers):
+    """An edited document is a document nobody has accepted.
+
+    Matching on the key alone would attach yesterday's acceptance to today's
+    text and show a tester a name against wording that person never saw.
+    """
+    _db, _p, folder = papers
+    doc = client.get("/api/agreements").json()["documents"][1]
+    client.post("/api/agreements/accept", json={
+        "document_key": "nda", "sha256": doc["sha256"], "name": "A Welder"})
+
+    (folder / "nda.txt").write_text(NDA + "\nAnd do not decompile it.\n",
+                                    encoding="utf-8")
+    after = client.get("/api/agreements").json()["documents"][1]
+    assert after["accepted"] is False
+    assert "accepted_by" not in after
+
+
+def test_the_helper_finds_the_acceptance_of_that_exact_wording(papers):
+    db, _p, _folder = papers
+    privacy, nda, _pilot = agreements.documents()
+    agreements.record(db, privacy, "A Welder", "Contractor Ltd")
+
+    got = agreements.acceptance_of(db, privacy)
+    assert got is not None and got["name"] == "A Welder"
+    assert agreements.acceptance_of(db, nda) is None
+
+
 # -- the record leaves the machine ------------------------------------------
 
 def test_the_record_reads_as_something_a_person_can_send(client, papers):

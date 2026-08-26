@@ -795,15 +795,24 @@ def create_app(db_path: str | Path) -> FastAPI:
         from . import agreements
 
         waiting = {d.key for d in agreements.outstanding(db)}
+        out = []
+        for d in agreements.documents():
+            said = {"key": d.key, "title": d.title, "body": d.body,
+                    "sha256": d.sha256, "version": d.version, "words": d.words,
+                    "accepted": d.key not in waiting}
+            # Who and when, for a document already agreed to. A person who
+            # accepted an NDA and later wants to know what they signed is
+            # asking two questions, and the wording alone answers one.
+            row = agreements.acceptance_of(db, d)
+            if row is not None:
+                said["accepted_by"] = row["name"]
+                said["accepted_company"] = row["company"] or ""
+                said["accepted_at"] = row["accepted_at"]
+            out.append(said)
         return {
             "armed": agreements.gate_is_armed(),
             "outstanding": sorted(waiting),
-            "documents": [
-                {"key": d.key, "title": d.title, "body": d.body,
-                 "sha256": d.sha256, "version": d.version, "words": d.words,
-                 "accepted": d.key not in waiting}
-                for d in agreements.documents()
-            ],
+            "documents": out,
         }
 
     @app.post("/api/agreements/accept")

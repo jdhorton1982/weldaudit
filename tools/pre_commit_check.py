@@ -182,6 +182,34 @@ def _refuse(complaints: list[str], subject: str) -> int:
     return 1
 
 
+def crlf_complaints() -> list[str]:
+    """A .bat with Unix line endings is a batch file cmd cannot read.
+
+    cmd reads a batch file by byte offset and needs the carriage returns to
+    find the end of a line. Without them it runs the simple lines and then
+    starts executing fragments of the ones it mis-split, so the failure is not
+    "syntax error" but a screen of `'lder' is not recognized` and a build that
+    did not happen. Four of the five batch files here had been quietly
+    converted by an editor before anybody noticed.
+    """
+    out = []
+    for path in staged():
+        if not path.lower().endswith((".bat", ".cmd")):
+            continue
+        try:
+            raw = subprocess.run(["git", "show", f":{path}"],
+                                 capture_output=True, check=True).stdout
+        except subprocess.CalledProcessError:
+            continue
+        if raw.count(b"\n") != raw.count(b"\r\n"):
+            out.append(
+                f"  {path}\n"
+                f"      a batch file with Unix line endings. cmd needs CRLF:\n"
+                f"      without it this runs as far as the first goto and then\n"
+                f"      executes fragments of its own comments.")
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     # `commit-msg` passes the path of the message file; `pre-commit` passes
@@ -189,7 +217,7 @@ def main(argv: list[str] | None = None) -> int:
     if argv:
         return check_message(Path(argv[0]))
 
-    complaints: list[str] = []
+    complaints: list[str] = crlf_complaints()
 
     for path in binaries():
         name = Path(path).name

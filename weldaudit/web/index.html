@@ -186,6 +186,24 @@
   #agree .accept label { font-size: 13px; flex: 1 1 auto; }
   #agree .note { font-size: 11px; color: var(--muted); }
   #agree .version { font-family: ui-monospace, Consolas, monospace; }
+  #agree #agree-recorded { display: flex; flex-direction: column; gap: 10px; }
+  #agree #agree-recorded[hidden], #agree #agree-controls[hidden] { display: none; }
+
+  /* The terms bar. Quiet by design: it is a way back to something already
+     read, not a thing to look at. flex:none keeps it out of the min-height
+     chain that the workspace above it depends on. */
+  #terms {
+    flex: none; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 6px 18px; background: var(--panel);
+    border-top: 1px solid var(--line); font-size: 11px; color: var(--muted);
+  }
+  #terms[hidden] { display: none; }
+  #terms .what { letter-spacing: .2px; }
+  #terms a { color: var(--muted); text-decoration: none;
+             border-bottom: 1px dotted var(--line); cursor: pointer; }
+  #terms a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+  #terms .sep { opacity: .5; }
+  @media print { #terms { display: none; } }
   /* min-height:0 on every link of the chain: a flex item defaults to
      min-height:auto, which refuses to shrink below its content, and one
      missing link lets the table push the pane past the bottom of the window
@@ -615,6 +633,18 @@
 </aside>
 </div>
 
+<!-- The terms, still reachable after they are agreed to. A person who
+     accepted an NDA and cannot re-read it has agreed to something they can
+     no longer see, which is the opposite of what recording it was for. -->
+<footer id="terms" hidden>
+  <span class="what">Terms you accepted:</span>
+  <span id="terms-links"></span>
+  <span style="flex:1"></span>
+  <a id="terms-record"
+     title="Save the record of what was accepted on this machine, and when"
+     >Save the record</a>
+</footer>
+
 <!-- Read before anything is audited. Rendered from /api/agreements so the
      wording on screen is the wording in the build, and the checksum recorded
      is the checksum of what was actually read. -->
@@ -627,6 +657,7 @@
     <div class="steps" id="agree-steps"></div>
     <div class="body" id="agree-body"></div>
     <div class="foot">
+      <div id="agree-controls">
       <div class="fields">
         <input id="agree-name" placeholder="Your full name" autocomplete="name">
         <input id="agree-company" placeholder="Company" autocomplete="organization">
@@ -640,6 +671,16 @@
       <div class="note">
         Recorded on this machine only — nothing is sent anywhere.
         <span id="agree-version" class="version"></span>
+      </div>
+      </div>
+      <!-- Shown instead of the above when the document is being re-read
+           rather than agreed to. Nothing here can record anything. -->
+      <div id="agree-recorded" hidden>
+        <div class="note" id="agree-recorded-who"></div>
+        <div class="accept">
+          <span style="flex:1 1 auto"></span>
+          <button id="agree-done">Close</button>
+        </div>
       </div>
     </div>
   </div>
@@ -986,6 +1027,8 @@ async function loadFindings() {
 // scrolled is worth no more than one that says they clicked.
 
 let agreeQueue = [];
+let agreeDocs = [];               // every document this build carries
+let accepting = false;            // a POST is in flight; no second one
 
 async function checkAgreements() {
   let said;
@@ -994,10 +1037,104 @@ async function checkAgreements() {
   } catch { return true; }          // cannot ask: do not lock anyone out
   if (!said.armed) return true;     // a build carrying no documents
 
+  agreeDocs = said.documents;
+  paintTerms();
   agreeQueue = said.documents.filter(d => !d.accepted);
   if (!agreeQueue.length) { $('#agree').hidden = true; return true; }
   showAgreement(said.documents);
   return false;
+}
+
+// The way back to a document already agreed to. It appears only once every
+// document has been answered: while the gate is up it would be behind it,
+// and offering a "read it later" route out of a blocking screen is not what
+// blocking means.
+function paintTerms() {
+  const bar = $('#terms'), links = $('#terms-links');
+  const done = agreeDocs.filter(d => d.accepted);
+  if (!done.length) { bar.hidden = true; return; }
+  links.innerHTML = done.map((d, i) =>
+    (i ? '<span class="sep">·</span> ' : '')
+    + `<a data-doc="${esc(d.key)}" title="Read it again">${esc(d.title)}</a>`
+  ).join(' ');
+  links.querySelectorAll('a[data-doc]').forEach(a => {
+    a.onclick = () => readDoc(a.dataset.doc);
+  });
+  $('#terms-record').onclick = saveTermsRecord;
+  bar.hidden = false;
+}
+
+// Read-only. The same sheet, the same wording, and nothing that can record
+// anything -- what it adds is who accepted it and when.
+function fmtWhen(stamp) {
+  if (!stamp) return '';
+  const zoned = /(Z|[+-]\d{2}:?\d{2})$/.test(stamp);
+  const at = new Date(zoned ? stamp : stamp + 'Z');
+  return isNaN(at) ? stamp : at.toLocaleString();
+}
+
+function readDoc(key) {
+  const doc = agreeDocs.find(d => d.key === key);
+  if (!doc) return;
+
+  $('#agree-steps').innerHTML = agreeDocs.map(d =>
+    `<span class="step ${d.key === key ? 'on' : (d.accepted ? 'done' : '')}"
+     >${esc(d.title)}</span>`).join('');
+  $('#agree-title').textContent = doc.title;
+  $('#agree-sub').textContent =
+    `${doc.words.toLocaleString()} words · the wording you accepted, unchanged.`;
+  $('#agree-body').textContent = doc.body;
+  $('#agree-body').scrollTop = 0;
+
+  // Stored as "2026-08-26T19:39:16+00:00" -- already carrying its offset, so
+  // adding a Z produces a string Date refuses and a line reading
+  // "accepted on Invalid Date". Only a stamp with no zone at all needs one.
+  const when = fmtWhen(doc.accepted_at);
+  $('#agree-recorded-who').innerHTML =
+    (doc.accepted_by
+      ? `Accepted by ${esc(doc.accepted_by)}`
+        + (doc.accepted_company ? ` (${esc(doc.accepted_company)})` : '')
+        + (when ? ` on ${esc(when)}` : '')
+      : 'Accepted on this machine')
+    + ` · <span class="version">wording ${esc(doc.version)}</span>`;
+
+  $('#agree-controls').hidden = true;
+  $('#agree-recorded').hidden = false;
+  $('#agree').hidden = false;
+  $('#agree-done').onclick = closeReading;
+  $('#agree-done').focus();
+}
+
+// The record leaves the machine as a file somebody can send on -- which is
+// the only form in which it is worth anything, since a row in a database on
+// the tester's own machine is worth what that machine is worth.
+//
+// Not an <a download>: a WebView2 window has no download bar, so an
+// attachment URL there does nothing at all -- no file, no error, no dialog.
+// Same lesson as the report export, and the same way out of it.
+async function saveTermsRecord() {
+  const bridge = window.pywebview && window.pywebview.api;
+  if (!(bridge && bridge.save_report)) {
+    location.href = '/api/agreements/record';    // an ordinary browser tab
+    return;
+  }
+  try {
+    const saved = await bridge.save_report(location.origin + '/api/agreements/record');
+    if (saved) {
+      toast('Saved to ' + saved,
+            bridge.reveal ? { label: 'Open folder', run: () => bridge.reveal(saved) }
+                          : undefined);
+    } else { toast('Nothing saved.'); }
+  } catch { toast('Could not save the record.'); }
+}
+
+function closeReading() {
+  // Never a way out of the gate: if anything is still unanswered the sheet
+  // stays, showing the document that is waiting.
+  $('#agree-controls').hidden = false;
+  $('#agree-recorded').hidden = true;
+  if (agreeQueue.length) { showAgreement(agreeDocs); return; }
+  $('#agree').hidden = true;
 }
 
 function showAgreement(all) {
@@ -1020,12 +1157,22 @@ function showAgreement(all) {
 
   const box = $('#agree-read'), go = $('#agree-go'), name = $('#agree-name');
   box.checked = false;
-  const ready = () => { go.disabled = !(box.checked && name.value.trim()); };
+  // Disabling the button is not enough on its own: ready() runs on every
+  // change to the box or the name, so toggling the box while the POST is in
+  // flight puts the button back and a second click shifts the queue twice --
+  // showing document three where document two should have been. The server
+  // still refuses the audit and the re-check below brings the skipped one
+  // back, but a document that flickered past is not a document that was read.
+  const ready = () => {
+    go.disabled = accepting || !(box.checked && name.value.trim());
+  };
   box.onchange = ready;
   name.oninput = ready;
   ready();
 
   go.onclick = async () => {
+    if (accepting) return;
+    accepting = true;
     go.disabled = true;
     try {
       const said = await fetch('/api/agreements/accept', {
@@ -1045,13 +1192,21 @@ function showAgreement(all) {
       }
       agreeQueue.shift();
       if (agreeQueue.length) { showAgreement(all); }
-      else { $('#agree').hidden = true; toast('Recorded. You can audit now.'); }
+      else {
+        $('#agree').hidden = true;
+        toast('Recorded. You can audit now.');
+        checkAgreements();      // re-reads, so the bar gets who and when
+      }
     } catch {
       toast('That could not be recorded.');
       go.disabled = false;
+    } finally {
+      accepting = false;
     }
   };
 
+  $('#agree-controls').hidden = false;
+  $('#agree-recorded').hidden = true;
   $('#agree').hidden = false;
   name.focus();
 }
@@ -1125,7 +1280,13 @@ async function revealDoc(documentId) {
 }
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeDoc();
+  if (e.key !== 'Escape') return;
+  // A document being re-read closes; the gate does not.
+  if (!$('#agree').hidden && $('#agree-recorded').hidden === false) {
+    closeReading();
+    return;
+  }
+  closeDoc();
 });
 
 function fmtDetail(detail) {
