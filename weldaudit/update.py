@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import sys
 import zipfile
@@ -145,6 +146,31 @@ def places(extra: str | Path | None = None) -> list[Path]:
     # whatever the account is called.
     for one in sorted(home.glob("OneDrive*")):
         out += [one / FOLDER, one]
+        # And one level down, because nobody keeps a shared folder loose at
+        # the top of their OneDrive: it gets filed with whatever it belongs
+        # with. The publisher's own copy sits in `OneDrive\Applications`,
+        # which meant the machine that cuts the releases was the one machine
+        # that could never take one — and the failure is silent, because a
+        # folder that is not found is indistinguishable from a folder with
+        # nothing new in it. No bar, no error, nothing in the log.
+        #
+        # One level, directories only. Measured on a OneDrive with seventeen
+        # folders in it: about a millisecond, either way round. `scandir` is
+        # used over `iterdir` because it answers from the listing rather than
+        # stat-ing each entry, but the difference is half a millisecond and
+        # not the reason to prefer it.
+        #
+        # The first call in a process can take a couple of seconds, and that
+        # is the OneDrive tree being touched cold rather than anything here —
+        # it costs the same however the folders are listed. Worth knowing
+        # before someone tries to optimise this loop for it.
+        try:
+            with os.scandir(one) as listing:
+                out += [Path(entry.path) / FOLDER for entry in listing
+                        if not entry.name.startswith(".")
+                        and entry.is_dir(follow_symlinks=False)]
+        except OSError:                   # a root that is not there yet
+            continue
     out += [home / FOLDER, home / "Desktop" / FOLDER, home / "Downloads" / FOLDER]
 
     import string
