@@ -284,8 +284,37 @@ def test_a_download_is_filed_correctly_unrenamed(filename, kind):
     assert taxonomy.kind_for(f"C:/jobs/Merlin 3 Pad C/{filename}") == kind
 
 
-def test_the_signed_drawing_set_satisfies_the_as_built_section():
-    assert taxonomy.section_for("TEST 1 - ISOS AND PIDS.pdf").number == 3
+@pytest.mark.parametrize("filename", [
+    "TEST 2 - ISOS AND PIDS.pdf",
+    "TEST 1 ISOS & PIDS.pdf",
+    "TEST 1 - ISOS & P&IDS.pdf",
+    "Isos/PIDs.pdf",
+    "ISOS+PIDS.pdf",
+    "TEST 3 - ISO AND P&ID.pdf",
+])
+def test_the_drawing_set_is_recognised_however_the_connector_is_written(filename):
+    # One download writes it both ways: TEST 2 as "ISOS AND PIDS" and TEST 1
+    # as "ISOS & PIDS". Matching only "and" left the second unmatched by name,
+    # which is the part that made it dangerous rather than merely incomplete.
+    assert taxonomy.kind_for(f"C:/jobs/Merlin 3 Pad C/{filename}") == "weldtrace_isos"
+    assert taxonomy.section_for(filename).number == 3
+
+
+def test_an_unmatched_drawing_set_is_not_claimed_by_the_folder_it_sits_in():
+    # The real failure. The file sat in "FW_ Merlin 3 Pad C - HYDRO TEST 1",
+    # so once its own name matched nothing, kind_for fell back to the path and
+    # the folder's "HYDRO" claimed it. A signed drawing set filed as a
+    # hydrotest document leaves section 3 short of the thing that satisfies it.
+    path = "C:/jobs/FW_ Merlin 3 Pad C - HYDRO TEST 1/TEST 1 ISOS & PIDS.pdf"
+    assert taxonomy.kind_for(path) == "weldtrace_isos"
+
+
+def test_the_section_and_the_kind_cannot_drift_apart():
+    # Both read the same pattern, so a fix to one is a fix to both.
+    from weldaudit.taxonomy import ISOS_AND_PIDS, KIND_RULES, SECTION_BY_NUMBER
+
+    assert ("weldtrace_isos", ISOS_AND_PIDS) in KIND_RULES
+    assert ISOS_AND_PIDS in SECTION_BY_NUMBER[3].patterns
 
 
 def test_the_test_plan_satisfies_the_hydro_section():

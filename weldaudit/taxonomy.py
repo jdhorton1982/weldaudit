@@ -25,13 +25,23 @@ class Section:
     required: bool = True
 
 
+#: The signed drawing set a WeldTrace download files its isometrics and P&IDs
+#: into. That is the as-built on a facility job, and without a pattern for it
+#: every such package reports section 3 missing.
+#:
+#: The connector between the two halves is written whichever way the person
+#: naming the file wrote it, and one download uses two of them: TEST 2 arrives
+#: as "ISOS AND PIDS" and TEST 1 as "ISOS & PIDS". Matching only "and" filed
+#: the second one as a *hydrotest* document - no kind matched its name, so
+#: :func:`kind_for` fell back to the folder it sat in, "...HYDRO TEST 1" - and
+#: left section 3 short of the very drawing set that satisfies it. Named once
+#: here because the section and the document kind must not drift apart.
+ISOS_AND_PIDS = r"isos? ?(?:and|&|\+|/)? ?p ?&? ?ids?"
+
 SECTIONS: tuple[Section, ...] = (
     Section(1, "Scope of Work", ("scope of work", "rfq")),
     Section(2, "Alignment Sheets", ("alignment sheet",)),
-    # A WeldTrace download files its signed drawing set as
-    # "TEST 1 - ISOS AND PIDS.pdf". That is the as-built on a facility job,
-    # and without the pattern every such package reports section 3 missing.
-    Section(3, "As-Built", ("as.?built", r"isos? and p ?&? ?ids?",
+    Section(3, "As-Built", ("as.?built", ISOS_AND_PIDS,
                             r"annotation ?attachments", r"annotations ?export")),
     Section(4, "Job Specs", ("job spec",)),
     Section(5, "Permits", ("permit",)),
@@ -87,7 +97,7 @@ KIND_RULES: tuple[tuple[str, str], ...] = (
     ("weldtrace_materials", r"(project)?materials ?export"),
     ("weldtrace_stamps", r"annotation ?attachments|annotations ?export"),
     ("weldtrace_test_plan", r"test plan|qaqc.?frm.?4347"),
-    ("weldtrace_isos", r"isos? and p ?&? ?ids?"),
+    ("weldtrace_isos", ISOS_AND_PIDS),
     ("nde_reader_sheet", r"reader sheet"),
     ("nde_tech_cert", r"nde certs?|tech certs?"),
     ("nde_procedure", r"\bnde\b.*procedures?|procedures?.*\bnde\b|individual procedures?|company procedures?"),
