@@ -27,7 +27,8 @@ import pytest  # noqa: E402
 
 from weldaudit import update  # noqa: E402
 from weldaudit.update import (  # noqa: E402
-    NotWhatItSaid, available, digest, is_newer, publish, read_release, stage,
+    INSTALLER, NotWhatItSaid, available, digest, is_newer, publish,
+    read_release, stage,
 )
 
 
@@ -116,6 +117,69 @@ def test_the_archive_holds_the_build_without_a_wrapper_folder(build, shared):
     publish(build, shared, "0.2.0")
     with zipfile.ZipFile(shared / "WeldAudit-0.2.0.zip") as z:
         assert "WeldAudit.exe" in z.namelist()
+
+
+# -- the installer travels with the release ----------------------------------
+#
+# The zip is an update for a copy that already exists. Somebody installing for
+# the first time has nothing to update, and needs the setup instead. Publishing
+# them separately meant the folder drifted: a 0.4.9 archive sat beside a 0.4.3
+# setup, and the mismatch is invisible until a new person installs the old one
+# and is immediately offered an update they should never have needed.
+
+
+def test_the_installer_beside_the_build_is_published_too(build, shared):
+    (build.parent / INSTALLER).write_bytes(b"MZ the setup")
+    publish(build, shared, "0.2.0")
+    assert (shared / INSTALLER).read_bytes() == b"MZ the setup"
+
+
+def test_the_marker_records_the_installer_it_published(build, shared):
+    (build.parent / INSTALLER).write_bytes(b"MZ the setup")
+    publish(build, shared, "0.2.0")
+    said = json.loads((shared / "version.json").read_text(encoding="utf-8"))
+    assert said["installer"] == INSTALLER
+    assert said["installer_sha256"] == digest(shared / INSTALLER)
+    assert said["installer_bytes"] == len(b"MZ the setup")
+
+
+def test_a_named_installer_is_published_over_the_one_beside_the_build(
+        build, shared, tmp_path):
+    (build.parent / INSTALLER).write_bytes(b"MZ the wrong one")
+    elsewhere = tmp_path / "Output" / "Setup.exe"
+    elsewhere.parent.mkdir()
+    elsewhere.write_bytes(b"MZ the one asked for")
+    publish(build, shared, "0.2.0", installer=elsewhere)
+    assert (shared / INSTALLER).read_bytes() == b"MZ the one asked for"
+
+
+def test_publishing_again_replaces_the_installer(build, shared):
+    """The failure this whole section exists to prevent."""
+    (build.parent / INSTALLER).write_bytes(b"MZ 0.2.0")
+    publish(build, shared, "0.2.0")
+    (build.parent / INSTALLER).write_bytes(b"MZ 0.3.0")
+    publish(build, shared, "0.3.0")
+    assert (shared / INSTALLER).read_bytes() == b"MZ 0.3.0"
+
+
+def test_a_build_with_no_installer_publishes_anyway(build, shared):
+    """An archive with no setup is a fine release; a refused one is not."""
+    publish(build, shared, "0.2.0")
+    said = json.loads((shared / "version.json").read_text(encoding="utf-8"))
+    assert not (shared / INSTALLER).exists()
+    assert "installer" not in said
+
+
+def test_an_installer_already_in_place_is_not_copied_over_itself(build, shared):
+    """Re-publishing from the shared folder must not truncate the setup.
+
+    ``shutil.copy2`` onto its own source opens the destination for writing
+    first, which empties the file it is about to read.
+    """
+    shared.mkdir(parents=True)
+    (shared / INSTALLER).write_bytes(b"MZ the setup")
+    publish(build, shared, "0.2.0", installer=shared / INSTALLER)
+    assert (shared / INSTALLER).read_bytes() == b"MZ the setup"
 
 
 # -- the release knows its own version ---------------------------------------

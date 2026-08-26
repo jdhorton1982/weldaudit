@@ -95,7 +95,7 @@ def cmd_release(args) -> int:
     version.json that disagrees with its archive is a broken update on
     somebody else's machine, discovered by them.
     """
-    from .update import current_version, publish
+    from .update import INSTALLER, current_version, publish
 
     build = Path(args.build)
     if not build.exists():
@@ -103,10 +103,21 @@ def cmd_release(args) -> int:
         return 1
 
     version = args.version or current_version()
-    archive = publish(build, args.to, version, notes=args.notes or "")
+    archive = publish(build, args.to, version, notes=args.notes or "",
+                      installer=args.installer)
     size = archive.stat().st_size / (1024 * 1024)
     print(f"WeldAudit {version} published to {args.to}")
     print(f"  {archive.name}  ({size:,.0f} MB)")
+
+    # Said out loud either way. A folder with a current archive and no
+    # installer is fine; a person who assumed it had one is not.
+    setup = Path(args.to) / INSTALLER
+    if setup.is_file():
+        print(f"  {setup.name}  ({setup.stat().st_size / (1024 * 1024):,.0f} MB)"
+              f"  - for a first install")
+    else:
+        print(f"  no {INSTALLER} beside the build, so none was published.")
+        print(f"  Anyone who has never installed WeldAudit will need one.")
     print()
     print("Share that folder with whoever runs WeldAudit. Their copy reads it")
     print("on startup and offers the update; nothing is downloaded from the")
@@ -567,6 +578,9 @@ def main(argv: list[str] | None = None) -> int:
                    help=r'the shared release folder, e.g. '
                         r'"%%USERPROFILE%%\OneDrive\WeldAudit Release"')
     r.add_argument("--version", help="version number (default: the program's own)")
+    r.add_argument("--installer", metavar="EXE",
+                   help="the setup to publish alongside the archive "
+                        "(default: WeldAudit-Setup.exe beside the build)")
     r.add_argument("--notes", help="one line on what changed, shown to the user")
     r.set_defaults(func=cmd_release)
 

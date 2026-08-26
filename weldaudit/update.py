@@ -511,14 +511,30 @@ def stage(release: Release, into: str | Path, progress=None) -> Path:
             shutil.rmtree(holding, ignore_errors=True)
 
 
+#: The installer, carried into the release folder beside the archive so that
+#: somebody who has never installed WeldAudit can start from the same place
+#: everybody else updates from.
+INSTALLER = "WeldAudit-Setup.exe"
+
+
 def publish(build: str | Path, into: str | Path, version: str,
-            notes: str = "") -> Path:
+            notes: str = "", installer: str | Path | None = None) -> Path:
     """Package a build into a release folder for everyone else to pick up.
 
     The other half of this file, and the half a person runs: zip the build,
     write down what it is and what it hashes to. Done here rather than by
     hand because a version.json that disagrees with its archive is a broken
     update on somebody else's machine.
+
+    The installer travels too, for the same reason and by the same argument.
+    A first install needs it and an update does not, so it used to be handed
+    over separately - and separately means eventually forgotten. A USB stick
+    in this project carried a five-release-old installer beside a current
+    everything-else for a week, and nothing about it looked wrong.
+
+    So if one is sitting beside the build, it is copied in and the copy is
+    replaced on every release. Nothing depends on it: a release published
+    without one is complete, it simply cannot start somebody from nothing.
     """
     build, into = Path(build), Path(into)
     into.mkdir(parents=True, exist_ok=True)
@@ -534,13 +550,34 @@ def publish(build: str | Path, into: str | Path, version: str,
         # fine and then offers itself the same update forever.
         z.writestr(STAMP, version)
 
-    (into / MARKER).write_text(json.dumps({
+    # Beside the build unless told otherwise: `Build.bat installer` leaves the
+    # setup next to the folder it built.
+    setup = Path(installer) if installer else (build.parent / INSTALLER)
+    carried = None
+    if setup.is_file():
+        import shutil
+
+        target = into / INSTALLER
+        # Never onto itself - publishing a release folder into itself would
+        # truncate the file being read.
+        if setup.resolve() != target.resolve():
+            shutil.copy2(setup, target)
+        carried = target
+
+    said = {
         "version": version,
         "notes": notes,
         "file": archive.name,
         "sha256": digest(archive),
         "bytes": archive.stat().st_size,
-    }, indent=2), encoding="utf-8")
+    }
+    if carried:
+        # Recorded so the folder can be checked, and so a stale installer is
+        # something a person can notice rather than something they discover.
+        said["installer"] = carried.name
+        said["installer_sha256"] = digest(carried)
+        said["installer_bytes"] = carried.stat().st_size
+    (into / MARKER).write_text(json.dumps(said, indent=2), encoding="utf-8")
 
     # Older archives left in place would be dead weight in everyone's sync.
     for old in into.glob("WeldAudit-*.zip"):
