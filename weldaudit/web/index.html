@@ -1921,10 +1921,13 @@ offerTheReadings();
 // A newer build sitting in the shared folder. This is a local file read --
 // the folder is one OneDrive or a share has already synced -- so it costs
 // nothing to ask on every start, and there is no server and no password.
+let updateWavedAway = null;      // the version somebody pressed Later on
+
 async function offerTheUpdate() {
   let r;
   try { r = await api('/api/update'); } catch { return; }
   if (!r.version) return;
+  if (r.version === updateWavedAway) return;
   $('#update-text').innerHTML =
     `WeldAudit <b>${esc(r.version)}</b> is available`
     + (r.notes ? ` — ${esc(r.notes)}` : '')
@@ -1943,9 +1946,32 @@ async function offerTheUpdate() {
       $('#update-do').disabled = false;
     }
   };
-  $('#update-hide').onclick = () => { $('#update-notice').hidden = true; };
+  $('#update-hide').onclick = () => {
+    // Later means later about *this* version, not about updates. A newer one
+    // than the one waved away still gets to interrupt.
+    updateWavedAway = r.version;
+    $('#update-notice').hidden = true;
+  };
   $('#update-notice').hidden = false;
 }
+
+// Asked again while the window is open, not only when it starts.
+//
+// This is a program somebody leaves running for a fortnight — it is open
+// beside the package they are working through — and a check that only runs at
+// startup means the copy that most needs an update is the one least likely to
+// be offered it. That is how a tester ends up reporting a bug against a build
+// that was replaced a week ago.
+//
+// Half an hour, because the answer is a file read from a folder that has
+// already synced, and because nobody needs to know within the minute.
+const UPDATE_EVERY = 30 * 60 * 1000;
+setInterval(() => {
+  // Nothing to say while an update is already on screen, or mid-install.
+  if (!$('#update-notice').hidden) return;
+  offerTheUpdate();
+}, UPDATE_EVERY);
+
 offerTheUpdate();
 
 // ---------------------------------------------------------------------------
