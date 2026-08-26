@@ -21,6 +21,7 @@ from fastapi.responses import (
 )
 from pydantic import BaseModel
 
+from . import stages
 from .db import Database
 from .index import completeness
 from .pipeline import run
@@ -71,6 +72,15 @@ class CorrectionRequest(BaseModel):
     field: str = "manufacturer"
     value: str | None = None
     note: str = ""
+
+
+class Stage(BaseModel):
+    """Which stage a job is being audited at.
+
+    Module level for the same reason as :class:`Acceptance` below.
+    """
+
+    stage: str
 
 
 class Acceptance(BaseModel):
@@ -242,6 +252,36 @@ def create_app(db_path: str | Path) -> FastAPI:
 
     # -- projects and audits ----------------------------------------------
 
+    @app.post("/api/project/{project_id}/stage")
+    def set_stage(project_id: int, req: Stage) -> dict:
+        """Mark a job preliminary or turnover.
+
+        Takes effect on the next run rather than rewriting the findings that
+        are already stored: a report and the audit behind it should say the
+        same thing, and re-running is a few seconds.
+        """
+        from . import stages as st
+
+        wanted = (req.stage or "").strip().lower()
+        if wanted not in st.STAGES:
+            raise HTTPException(
+                400, f"Unknown stage: {req.stage!r}. "
+                     f"Expected one of {', '.join(st.STAGES)}.")
+        if not db.one("SELECT 1 AS n FROM project WHERE id=?", (project_id,)):
+            raise HTTPException(404, f"No project {project_id}")
+        with db.tx() as c:
+            c.execute("UPDATE project SET stage=? WHERE id=?", (wanted, project_id))
+        return {"project_id": project_id, "stage": wanted,
+                "label": st.LABELS[wanted],
+                "rerun_needed": True}
+
+    @app.get("/api/stages")
+    def stage_options() -> dict:
+        from . import stages as st
+
+        return {"stages": [{"key": k, "label": st.LABELS[k]} for k in st.STAGES],
+                "softened": sorted(st.ASSEMBLED_LAST)}
+
     @app.get("/api/projects")
     def projects() -> list[dict]:
         out = []
@@ -259,6 +299,7 @@ def create_app(db_path: str | Path) -> FastAPI:
                 {
                     "id": p["id"], "name": p["name"], "root": p["root"],
                     "scanned_at": p["scanned_at"],
+                    "stage": stages.stage_of(p),
                     "counts": {k: (counts[k] or 0) for k in
                                ("critical", "major", "minor", "info", "total")},
                     "documents": stored.get("document", 0),

@@ -468,6 +468,9 @@
   </svg>
   <h1>Weld<span>Audit</span></h1>
   <select id="project" title="Audited project"></select>
+  <select id="stage" title="How far along this job is. A preliminary job is
+still being built, so the parts of the package assembled last are recorded
+but not counted against it."></select>
   <input type="text" id="root" placeholder="Folder to audit, e.g. C:\Users\...\the operator\GL 31">
   <button id="manage" title="Remove audits you no longer need">Manage…</button>
   <button id="browse" title="Pick the folder instead of typing it">Browse…</button>
@@ -897,8 +900,39 @@ async function removeJob(id) {
 
 // -- projects ---------------------------------------------------------------
 
+// Filled once; the options do not change while the window is open.
+let stageOptions = [];
+
+async function paintStages() {
+  if (!stageOptions.length) {
+    try { stageOptions = (await api('/api/stages')).stages; } catch { return; }
+  }
+  $('#stage').innerHTML = stageOptions.map(s =>
+    `<option value="${esc(s.key)}">${esc(s.label)}</option>`).join('');
+}
+
+// Takes effect on the next run, and says so, rather than rewriting findings
+// already stored: a report and the audit behind it have to say the same thing.
+$('#stage').onchange = async () => {
+  if (!state.project) return;
+  const wanted = $('#stage').value;
+  try {
+    const said = await api(`/api/project/${state.project}/stage`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stage: wanted }),
+    });
+    toast(`Marked ${said.label.toLowerCase()}. Run the audit again to apply it.`,
+          { label: 'Run audit', run: () => $('#go').click() });
+  } catch (e) {
+    toast('Could not change the stage: ' + (e.message || e));
+  }
+};
+
 async function loadProjects(select) {
   const projects = await api('/api/projects');
+  await paintStages();
+  window.projectStages = Object.fromEntries(
+    projects.map(p => [p.id, p.stage || 'turnover']));
   const sel = $('#project');
   sel.innerHTML = projects.map(p =>
     `<option value="${p.id}">${esc(p.name)} — ${plural(p.counts.total, 'finding')}</option>`
@@ -920,6 +954,7 @@ async function loadProjects(select) {
 
 async function selectProject(id) {
   state.project = id;
+  if (window.projectStages) $('#stage').value = window.projectStages[id] || 'turnover';
   // How long this job's last audit took, from the run record. Painted on
   // opening a project rather than only while one is running: "why did that
   // take four minutes" is a question asked the next morning, and gauges that

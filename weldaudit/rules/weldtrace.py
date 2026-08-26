@@ -28,7 +28,7 @@ from collections import defaultdict
 
 from ..db import Database
 from ..extract.weldtrace import PARSED_KINDS
-from ..weldtrace import HeatRow, split_trailing_revision
+from ..weldtrace import HeatRow, is_torque_point, split_trailing_revision
 from . import Finding, register
 
 
@@ -724,6 +724,11 @@ def stamp_orphan(db: Database, project_id: int, run_id: str) -> list[Finding]:
 
     findings: list[Finding] = []
     for r in rows:
+        # A torque point is in no test pack because it is not a weld. Saying
+        # so as "a weld the register does not have" is untrue, and it was
+        # fourteen of the seventeen this rule raised on one job.
+        if is_torque_point(r["weld_tag"]):
+            continue
         tags = (r["tags"] or "").replace(",", ", ")
         drawings = (r["drawings"] or "").replace(",", ", ")
         findings.append({

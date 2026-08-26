@@ -171,14 +171,23 @@ def index_project(
         # NB: `correction` and `finding_note` are deliberately absent from
         # this list. Everything else here can be rebuilt by reading the
         # documents again; a value a person typed cannot.
+        # Children before parents, and `weld` is a parent of three of these.
+        # It used to sit eighth, which was harmless until the WeldTrace
+        # register began matching itself to the weld maps: from the first run
+        # that filled in weldtrace_weld.weld_id, every re-audit of that job
+        # died here with "FOREIGN KEY constraint failed" before it read a
+        # single document. `weld` is last on purpose - keep it there, and see
+        # tests/test_reaudit_clears_down.py, which checks the whole order
+        # against the schema's own foreign keys rather than just this one.
         for table in ("finding", "material", "installed_heat", "welder_pass",
-                      "welder_cert", "nde_shot", "reader_sheet", "weld",
+                      "welder_cert", "nde_shot", "reader_sheet",
                       "vision_conflict",
                       "nde_tech", "aml_entry",
                       "hydrotest", "instrument_cal", "coating_report",
                       "flange", "flange_map", "procedure", "welder_roster", "backfill_release",
                       "asbuilt_joint", "weldtrace_exam", "weldtrace_weld",
-                      "weldtrace_heat", "weldtrace_stamp"):
+                      "weldtrace_heat", "weldtrace_stamp",
+                      "weld"):
             c.execute(f"DELETE FROM {table} WHERE project_id=?", (project_id,))
         c.execute("DELETE FROM document WHERE project_id=?", (project_id,))
 

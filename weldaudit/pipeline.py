@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from . import rules
+from . import rules, stages
 from .db import Database
 from .extract import (
     asbuilt, corrections, dwr, flanges, instruments, materials, mtrtext, ndelog,
@@ -277,6 +277,12 @@ def run(
     say("reconcile", "Running audit rules")
     db.clear_findings(project_id)
     found = rules.sort_findings(rules.run_all(db, project_id, run_id, only=only_rules))
+    # Softened after the rules have spoken and before anything is sorted on
+    # severity, so a preliminary job's assembly findings are recorded in full
+    # and simply not counted against it yet. Nothing is dropped.
+    row = db.one("SELECT stage FROM project WHERE id=?", (project_id,))
+    at_stage = stages.stage_of(row) if row is not None else stages.TURNOVER
+    found = rules.sort_findings(stages.soften(found, at_stage))
     db.add_findings(found)
     # Findings are rebuilt from scratch every run; the comments people wrote on
     # them are not, and are put back here.

@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 
 from ..db import Database
 from ..ids import NdeId, cutout_series, gaps, sequences
+from ..weldtrace import is_torque_point
 from . import Finding, register
 
 # Status text that means the shot passed.  Everything else is treated as
@@ -474,6 +475,8 @@ def weld_numbered_prefixes(db: Database, project_id: int) -> set[str]:
         (project_id,))
     out = set()
     for r in rows:
+        if is_torque_point(r["weld_tag"]):
+            continue        # a torque map is not the weld numbering
         m = re.match(r"([A-Za-z]+)-?\d+", str(r["weld_tag"] or ""))
         if m:
             out.add(m.group(1).upper())

@@ -244,6 +244,24 @@ def parse_tag(text: object) -> WeldTag | None:
     return WeldTag(m.group("prefix"), int(m.group("number")), suffix)
 
 
+#: Stamp prefixes that mark a bolted joint on the torque map rather than a
+#: weld. They arrive in the same annotation export, on the same isometrics, so
+#: nothing in the document separates them -- only the tag does.
+#:
+#: They are stored like any other stamp, because they are real annotations and
+#: the torque map is a document the audit will want. What they must not do is
+#: answer weld questions: a torque point is in no test pack because it is not
+#: a weld, and reporting it as "a weld the register does not have" is a
+#: statement that is simply untrue. Fourteen of them on one job.
+TORQUE_PREFIXES: frozenset[str] = frozenset({"T"})
+
+
+def is_torque_point(tag: str) -> bool:
+    """Whether a stamp names a bolted joint rather than a weld."""
+    head, _, rest = str(tag or "").partition("-")
+    return bool(rest) and head.upper() in TORQUE_PREFIXES
+
+
 def split_trailing_revision(value: str) -> tuple[str, str]:
     """``'2-D1-0-GL-4012-1-0'`` -> ``('2-D1-0-GL-4012-1', '0')``.
 

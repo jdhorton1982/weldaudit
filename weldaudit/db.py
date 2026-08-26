@@ -22,7 +22,11 @@ CREATE TABLE IF NOT EXISTS project (
     id          INTEGER PRIMARY KEY,
     name        TEXT NOT NULL UNIQUE,
     root        TEXT NOT NULL,
-    scanned_at  TEXT
+    scanned_at  TEXT,
+    -- How far along the job is: 'turnover' (the default, everything is
+    -- expected to be complete) or 'preliminary' (still being built, so the
+    -- parts of the package that are assembled last are not yet late).
+    stage       TEXT NOT NULL DEFAULT 'turnover'
 );
 
 -- Every file found on disk, classified but not yet read.

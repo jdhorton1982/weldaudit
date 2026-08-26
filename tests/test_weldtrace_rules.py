@@ -469,6 +469,33 @@ def test_a_stamp_that_is_in_no_test_pack(download):
     assert "2-D1-0-GL-4015-1" in found[0]["message"]
 
 
+def test_a_torque_point_is_not_a_weld_missing_from_a_test_pack(download):
+    """T-29 is a bolted joint on the torque map, not a joint anybody welded.
+
+    The torque stamps arrive in the same annotation export as the welds, on
+    the same isometrics, so nothing but the tag separates them. Reporting one
+    as "a weld the register does not have" says something untrue about a
+    document that is perfectly correct -- fourteen times on one real job,
+    against three genuine orphans.
+    """
+    db, pid = download(stamps=[{"Text inside bubble": "T-29\nARV"},
+                               {"Text inside bubble": "T-103\nARV"}])
+    assert wt.stamp_orphan(db, pid, "r1") == []
+
+
+def test_a_torque_point_does_not_silence_a_real_orphan(download):
+    db, pid = download(stamps=[{"Text inside bubble": "T-29\nARV"},
+                               {"Text inside bubble": "BFW-81\nARV"}])
+    found = wt.stamp_orphan(db, pid, "r1")
+    assert [f["subject"] for f in found] == ["BFW-81"]
+
+
+def test_a_weld_prefix_beginning_with_t_is_not_a_torque_point(download):
+    """TW-4 is a weld. Only the bare T series is the torque map."""
+    db, pid = download(stamps=[{"Text inside bubble": "TW-4\nARV"}])
+    assert codes(wt.stamp_orphan(db, pid, "r1")) == ["WT-21"]
+
+
 def test_the_two_sides_of_a_prefix_typo_are_both_reported(download):
     # W-81 in the register against BFW-81 on the drawing is almost certainly
     # one joint mistyped - and almost is not something to write into a
