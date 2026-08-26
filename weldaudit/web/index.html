@@ -59,8 +59,49 @@
   button { cursor: pointer; }
   button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
   button:disabled { opacity: .5; cursor: default; }
-  main { padding: 18px; flex: 1 1 auto; min-height: 0;
+  #workspace { flex: 1 1 auto; min-height: 0; display: flex; }
+  main { padding: 18px; flex: 1 1 auto; min-width: 0; min-height: 0;
          display: flex; flex-direction: column; }
+
+  /* The document panel. Sized in percent so a wide window gives the page more
+     room and a narrow one still leaves the findings readable. */
+  #viewer {
+    flex: 0 0 52%; min-width: 380px; display: flex; flex-direction: column;
+    background: var(--panel); border-left: 1px solid var(--line);
+  }
+  #viewer[hidden] { display: none; }
+  #viewer-why {
+    display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+    border-bottom: 1px solid var(--line); background: var(--bg); font-size: 12px;
+  }
+  #viewer-why .sev { font-weight: 700; text-transform: uppercase;
+                     font-size: 11px; letter-spacing: .5px; }
+  #viewer-why .rule { font-family: ui-monospace, Consolas, monospace;
+                      color: var(--muted); }
+  #viewer-why .msg { flex: 1 1 auto; min-width: 0; overflow: hidden;
+                     text-overflow: ellipsis; white-space: nowrap; }
+  #viewer-bar {
+    display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 12px;
+    border-bottom: 1px solid var(--line); flex: none;
+  }
+  #viewer-name {
+    font-family: ui-monospace, Consolas, monospace; font-size: 12px;
+    flex: 1 1 auto; min-width: 0; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+  }
+  #viewer-bar button { padding: 4px 10px; font-size: 12px; flex: none; }
+  #viewer-frame { flex: 1 1 auto; width: 100%; border: 0; background: var(--bg); }
+  /* Narrow, the split stops being a split: 52% of a small window plus the
+     panel's own minimum leaves the findings a few characters wide. So the
+     document takes the window instead, and the strip above it — the finding,
+     and the close button — is the way back. */
+  @media (max-width: 1000px) {
+    #workspace.viewing main { display: none; }
+    #workspace.viewing #viewer { flex-basis: 100%; }
+  }
+  /* Printing a report should not print whatever certificate happens to be
+     open beside it. */
+  @media print { #viewer { display: none; } }
   /* min-height:0 on every link of the chain: a flex item defaults to
      min-height:auto, which refuses to shrink below its content, and one
      missing link lets the table push the pane past the bottom of the window
@@ -382,6 +423,11 @@
   <button id="notice-hide">Not now</button>
 </div>
 
+<!-- Main and the document panel sit side by side, so opening a certificate
+     narrows the findings rather than covering them. Reading a certificate is
+     answering a question the list asked, and hiding the list to show the
+     answer is how you lose track of which weld you were on. -->
+<div id="workspace">
 <main>
   <div class="cards" id="cards"></div>
 
@@ -442,6 +488,29 @@
     <div id="aml-source" style="color:var(--muted);font-size:12px;padding:6px 2px"></div>
   </section>
 </main>
+
+<aside id="viewer" hidden>
+  <!-- Why you are looking at this. You never open a document for its own
+       sake — a rule pointed at it — and a certificate with the finding gone
+       from the screen is a certificate you have to remember the question for. -->
+  <div id="viewer-why"></div>
+  <div id="viewer-bar">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)"
+         stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/>
+      <path d="M14 3v5h5"/>
+    </svg>
+    <span id="viewer-name" title=""></span>
+    <button id="viewer-reveal" title="Show the file in Explorer">Open folder</button>
+    <button id="viewer-close" title="Close the document (Esc)">&#10005;</button>
+  </div>
+  <!-- The page itself is drawn by the window's own PDF viewer. Bundling one
+       would add megabytes to a single-file interface to redo what WebView2
+       already does; the chrome that matters — the finding above, and the way
+       back — is ours. -->
+  <iframe id="viewer-frame" title="Document" src="about:blank"></iframe>
+</aside>
+</div>
 
 <div id="toast"></div>
 
@@ -743,7 +812,9 @@ async function loadFindings() {
         <td class="msg">${esc(r.message)}</td>
         <td class="detail">${esc(fmtDetail(r.detail))}</td>
         <td>${r.document_id
-              ? `<a href="/api/document/${r.document_id}" target="_blank">${esc(r.filename || 'open')}</a>`
+              ? `<a href="/api/document/${r.document_id}"
+                    onclick="return viewDoc(${r.document_id}, ${r.id})"
+                    >${esc(r.filename || 'open')}</a>`
               : ''}</td>
         <td class="comment" onclick="editComment(${r.id})"
             title="Click to write a comment">${
@@ -761,6 +832,78 @@ async function loadFindings() {
              title="Open the page, read the manufacturer, and enter it">✎</button>` : ''}
         </td></tr>`).join('') + '</tbody>';
 }
+
+// ── the document panel ─────────────────────────────────────────────────────
+//
+// Opening a finding's document used to be `target="_blank"`, which in this
+// window means Windows launches a browser: the audit disappears behind
+// whatever opens, and the finding you were reading is two alt-tabs away.
+//
+// The page is drawn by the window's own PDF viewer through an iframe rather
+// than by a bundled one. WebView2 renders a PDF perfectly well, and shipping
+// PDF.js to redo it would add megabytes to an interface that is one file.
+// What is worth owning is the chrome around it, which is where the finding
+// and the way back live.
+
+let viewing = null;               // the document_id on screen, or null
+
+function viewDoc(documentId, findingId) {
+  const panel = $('#viewer');
+  if (!panel) return true;        // no panel: let the link do what it always did
+
+  // Same document twice is a request to put it away.
+  if (viewing === documentId) { closeDoc(); return false; }
+
+  const row = (state.rows || []).find(r => r.id === findingId) || {};
+  const why = $('#viewer-why');
+  why.innerHTML = row.severity
+    ? `<span class="sev ${esc(row.severity)}">${esc(row.severity)}</span>`
+      + `<span class="rule">${esc(row.rule || '')}</span>`
+      + `<span class="msg" title="${esc(row.message || '')}">${esc(row.message || '')}</span>`
+    : '';
+  why.hidden = !row.severity;
+
+  const name = row.filename || 'Document';
+  $('#viewer-name').textContent = name;
+  $('#viewer-name').title = name;
+  $('#viewer-frame').src = `/api/document/${documentId}`;
+  panel.hidden = false;
+  $('#workspace').classList.add('viewing');
+  viewing = documentId;
+
+  $('#viewer-reveal').onclick = () => revealDoc(documentId);
+  $('#viewer-close').onclick = closeDoc;
+  return false;                   // and do not follow the href
+}
+
+function closeDoc() {
+  const panel = $('#viewer');
+  if (!panel || panel.hidden) return;
+  panel.hidden = true;
+  $('#workspace').classList.remove('viewing');
+  // Blanked rather than left loaded: a PDF held open in a hidden frame keeps
+  // its file handle, and the next audit run cannot re-index a locked file.
+  $('#viewer-frame').src = 'about:blank';
+  viewing = null;
+}
+
+async function revealDoc(documentId) {
+  const bridge = window.pywebview && window.pywebview.api;
+  if (!bridge || !bridge.reveal) {
+    toast('Showing the file in Explorer needs the WeldAudit window.');
+    return;
+  }
+  try {
+    const where = await fetch(`/api/document/${documentId}/where`).then(r => r.json());
+    if (!where.path || !(await bridge.reveal(where.path))) {
+      toast('That file is no longer where the audit found it.');
+    }
+  } catch { toast('Could not show the file in Explorer.'); }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeDoc();
+});
 
 function fmtDetail(detail) {
   if (!detail) return '';

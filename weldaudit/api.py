@@ -6,6 +6,7 @@ poll progress rather than holding a request open for a minute.
 
 from __future__ import annotations
 
+import re
 import sqlite3
 import sys
 import threading
@@ -30,6 +31,22 @@ from .rules.backfill import release_summary
 from .rules.roster import roster_summary
 from .rules.wps import procedure_summary
 from .rules.nde_coverage import coverage_summary
+
+#: What the audit window can draw in its own document panel, rather than
+#: handing to whatever program Windows has registered. WebView2 renders a PDF
+#: itself and paints images, which between them is most of what a finding
+#: points at. A spreadsheet or a drawing is not on this list and still opens
+#: the way it always did.
+VIEWABLE: dict[str, str] = {
+    ".pdf": "application/pdf",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+}
+
 
 def _web_dir() -> Path:
     """Where index.html lives, running from source or from the packaged exe.
@@ -634,11 +651,48 @@ def create_app(db_path: str | Path) -> FastAPI:
     # -- source documents --------------------------------------------------
 
     @app.get("/api/document/{document_id}")
-    def document(document_id: int) -> FileResponse:
+    def document(document_id: int, download: bool = False) -> FileResponse:
+        """Serve a document, inline where the window can draw it itself.
+
+        ``FileResponse(path, filename=...)`` sets ``Content-Disposition:
+        attachment``, which tells the browser to save the file rather than
+        show it. That is the reason opening a finding's document needed a
+        browser window at all: a panel in the audit window pointed at this
+        would have downloaded the certificate instead of displaying it.
+
+        So the kinds the window can draw come back inline, and everything
+        else - a spreadsheet, a drawing - keeps the old behaviour, because
+        those still need whichever program is registered for them.
+        """
         row = db.one("SELECT path, filename FROM document WHERE id=?", (document_id,))
         if not row or not Path(row["path"]).exists():
             raise HTTPException(404, "Document not found on disk")
-        return FileResponse(row["path"], filename=row["filename"])
+
+        kind = VIEWABLE.get(Path(row["path"]).suffix.lower())
+        if not kind or download:
+            return FileResponse(row["path"], filename=row["filename"])
+
+        # The name travels so that saving from the viewer produces something
+        # called after the document rather than after its id. A quote or a
+        # newline would end the header early, so they go.
+        safe = re.sub(r'[^\w \-.()\[\]]', "_",
+                      row["filename"] or f"document-{document_id}")
+        return FileResponse(
+            row["path"], media_type=kind,
+            headers={"Content-Disposition": f'inline; filename="{safe}"'})
+
+    @app.get("/api/document/{document_id}/where")
+    def document_where(document_id: int) -> dict:
+        """Where a document sits on disk, for "Open folder" in the viewer.
+
+        The panel shows the page; this is what lets somebody get to the file
+        itself - to send it on, or to look at what is filed beside it.
+        """
+        row = db.one("SELECT path, filename FROM document WHERE id=?", (document_id,))
+        if not row:
+            raise HTTPException(404, "No such document")
+        return {"path": row["path"], "filename": row["filename"],
+                "on_disk": Path(row["path"]).exists()}
 
     # -- what a person read off the page -----------------------------------
 
