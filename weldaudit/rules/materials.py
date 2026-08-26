@@ -23,7 +23,8 @@ from pathlib import Path
 
 from ..aml import Aml, SizeLimit
 from ..db import Database
-from ..mtrname import normalise_heat
+from ..mtrname import _SPEC as _SPEC_PATTERN
+from ..mtrname import normalise_heat, same_heat_differently_read
 from . import Finding, register
 
 
@@ -890,3 +891,115 @@ def aml_out_of_date(db: Database, project_id: int, run_id: str) -> list[Finding]
             ),
         }]
     return []
+
+
+#: A heat read off a page that is really a material specification. The reader
+#: puts "A/SA105-N" in the heat field often enough to matter, and a
+#: specification compared against a heat is a finding about nothing.
+def _spec_not_heat(text: str) -> bool:
+    return any(_SPEC_PATTERN.match(part) for part in re.split(r"[/-]", text or "")
+               if part)
+
+
+#: How much of a shorter heat has to be present before a prefix is treated as
+#: the same heat written two ways. Below this a coincidence is likely.
+_ENOUGH_OF_A_PREFIX = 4
+
+
+def _same_heat_two_ways(filename_heat: str, page_heat: str) -> bool:
+    """Whether these two readings describe one heat.
+
+    Three ways they legitimately differ, none of which is a filing error:
+
+    * exactly equal once punctuation is dropped;
+    * one character apart on a scan — the tolerance the rest of the audit
+      already uses, because a scanned heat that comes back a character out is
+      a statement about the scan, not about the steel;
+    * one is a prefix of the other. A certificate often prints the melt,
+      ``A11484``, while the filename carries the piece it was cut for,
+      ``A11484-24``. Reporting that pair would be a finding on a naming
+      convention rather than on the material.
+    """
+    left, right = normalise_heat(filename_heat), normalise_heat(page_heat)
+    if not left or not right or left == right:
+        return True
+    if same_heat_differently_read(filename_heat, page_heat):
+        return True
+    short, long = sorted((left, right), key=len)
+    return len(short) >= _ENOUGH_OF_A_PREFIX and long.startswith(short)
+
+
+@register("MTR-12", "Certificate's filename names a different heat than the page")
+def filename_heat_disagrees(db: Database, project_id: int, run_id: str) -> list[Finding]:
+    """The heat in the filename is not the heat printed on the certificate.
+
+    Every heat in this corpus arrives from a filename — ``A11484-24 ~ 4IN 300
+    RFWN FLANGE.pdf`` — because that is the only exact text there is; a heat
+    on a scan has been through OCR. The filename is also typed by whoever
+    filed the document, and nothing was checking it against the page.
+
+    So a certificate filed under the wrong heat passed silently. The material
+    is then credited to a melt it did not come from: the wrong mill is checked
+    against the approved list, the heat that was really installed shows as
+    having no certificate, and the heat named in the filename shows as
+    certified when nothing certifies it. One typo, three wrong answers, and
+    nothing anywhere to say so.
+
+    Only fires where a page was actually read. A certificate nobody has put
+    through the reader has no page heat, and silence there means unchecked,
+    not agreed — which is what MTR-08 and the readings banner are for.
+    """
+    rows = db.q(
+        """SELECT m.segment, m.heat, m.page_heat, m.document_id, d.filename
+           FROM material m JOIN document d ON d.id = m.document_id
+           WHERE m.project_id=? AND m.source='mtr_file'
+             AND IFNULL(m.heat_key,'') <> '' AND IFNULL(m.page_heat,'') <> ''
+           ORDER BY d.filename""",
+        (project_id,),
+    )
+
+    # Grouped by what the page said, not by file. One heat covers many pieces,
+    # and a works will certify all of them on one sheet that is then filed
+    # once per piece under each piece's own number — five swing check valves,
+    # five copies of one certificate, one heat AJ3550. Reported per file that
+    # is five findings saying the same thing about the same page; reported per
+    # page heat it is one finding that names all five.
+    from collections import defaultdict
+
+    groups: dict[str, list] = defaultdict(list)
+    for r in rows:
+        if _spec_not_heat(r["page_heat"]):
+            continue                      # the reader picked up A/SA105-N
+        if _same_heat_two_ways(r["heat"], r["page_heat"]):
+            continue
+        groups[r["page_heat"]].append(r)
+
+    out: list[Finding] = []
+    for page_heat, found in sorted(groups.items()):
+        first = found[0]
+        named = ", ".join(sorted({r["heat"] for r in found}))
+        if len(found) == 1:
+            what = (f"'{first['filename']}' is filed under heat {first['heat']}, "
+                    f"but the certificate itself reads {page_heat}")
+        else:
+            what = (f"{len(found)} certificates all read {page_heat} on the page "
+                    f"but are filed under {named}")
+        out.append({
+            "project_id": project_id, "run_id": run_id, "rule": "MTR-12",
+            "severity": "major", "segment": first["segment"],
+            "subject": named[:80],
+            "message": (
+                f"{what}. The material is being credited to the filename rather "
+                f"than to what the certificate says. Either the filenames carry "
+                f"a piece or serial number instead of the heat -- in which case "
+                f"heat {page_heat} is not recorded as certified anywhere -- or a "
+                f"certificate is filed under the wrong heat, and whatever was "
+                f"really installed under {named} has no certificate at all. "
+                f"Open the page and settle which."
+            ),
+            "detail": _detail(page_heat=page_heat, filed_under=named,
+                              certificates="; ".join(r["filename"] for r in found),
+                              document_ids=",".join(str(r["document_id"]) for r in found)),
+            "document_id": first["document_id"], "page_no": 1,
+        })
+    return out

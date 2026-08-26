@@ -213,7 +213,16 @@ def parse(filename: str) -> MtrIdentity:
     if m := _LEADING_HEAT.match(stem):
         lead = m.group(1)
         if not _is_not_heat(lead) and len(lead) >= 3:
-            ident.heat = _trim_heat(lead)
+            # A tilde separator is taken at its word. Somebody writing
+            # "A11484-24 ~ 4IN 300 RFWN FLANGE" reached for "~" precisely
+            # because the heat already contains a dash, and that is the
+            # clearest statement of where the heat ends that a filename can
+            # make. Trimming it anyway lost the "-24" — _GRADE matches a bare
+            # two-digit number, so the suffix looked like an X42-style grade.
+            # The result was a heat that matches no register and no as-built,
+            # which is worse than not reading one at all.
+            ident.heat = lead.upper() if m.group(0).rstrip().endswith("~") \
+                else _trim_heat(lead)
             ident.heats = [ident.heat]
             ident.confidence = "high"
             return ident

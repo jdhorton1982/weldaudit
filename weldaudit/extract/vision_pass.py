@@ -1169,7 +1169,14 @@ def _apply_mtr(db: Database, project_id: int, target: Target,
         "grade": _clean(payload.get("grade")),
         "confidence": "vision",
     }
-    # Only adopt a heat the filename could not supply - a filename heat is
+    # Recorded whether or not it is adopted. Until now a page heat was thrown
+    # away whenever the filename had already supplied one, so a certificate
+    # filed under the wrong heat looked exactly like a correct one: the
+    # material was credited to a melt it did not come from and nothing
+    # compared the two. MTR-12 compares them.
+    if heat:
+        fields["page_heat"] = heat
+    # Only *adopt* a heat the filename could not supply — a filename heat is
     # exact text, while a scanned one has been through OCR.
     if heat and not row["heat_key"]:
         fields["heat"] = heat
