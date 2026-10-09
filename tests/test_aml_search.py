@@ -19,7 +19,19 @@ from fastapi.testclient import TestClient  # noqa: E402
 from weldaudit.aml import Aml, AmlEntry, SizeLimit, normalise_manufacturer  # noqa: E402
 from weldaudit.amlsearch import categories, search  # noqa: E402
 from weldaudit.api import create_app  # noqa: E402
-from weldaudit.db import Database  # noqa: E402
+import datetime as _dt  # noqa: E402
+import os  # noqa: E402
+
+from weldaudit.db import Database
+
+
+#: A list that has not lapsed *today*. Written as a fixed date, this test
+#: passed for two years and then failed every day after 30 September 2026 -
+#: for a reason that had nothing to do with the endpoint it was testing. The
+#: expired case has its own test below, with its own fixed past date.
+_NEXT_YEAR = _dt.date.today().replace(year=_dt.date.today().year + 1)
+CURRENT_VALID_THRU = _NEXT_YEAR.isoformat()
+CURRENT_REVISION = _NEXT_YEAR.strftime("%b %-d, %Y") if os.name != "nt"     else _NEXT_YEAR.strftime("%b %#d, %Y")  # noqa: E402
 
 
 def entry(mfr, category="1.0 Pipe", location="Houston, TX, USA",
@@ -185,8 +197,8 @@ def api(tmp_path):
         c.execute("""INSERT INTO aml_source(project_id, path, kind, revision,
                                             valid_thru, entries)
                      VALUES(?,?,?,?,?,?)""",
-                  (pid, r"C:\lists\Piping AML.pdf", "pdf", "Sept 30, 2026",
-                   "2026-09-30", 2))
+                  (pid, r"C:\lists\Piping AML.pdf", "pdf", CURRENT_REVISION,
+                   CURRENT_VALID_THRU, 2))
         c.executemany(
             """INSERT INTO aml_entry(project_id, category, manufacturer, location,
                                      limits_raw, min_nps, max_nps, conditions, norm_name)
@@ -210,7 +222,7 @@ def test_the_endpoint_names_the_list_it_searched(api):
     """So a report and a lookup can be shown to be about the same revision."""
     client, pid = api
     r = client.get("/api/aml", params={"project_id": pid}).json()
-    assert r["source"]["revision"] == "Sept 30, 2026"
+    assert r["source"]["revision"] == CURRENT_REVISION
     assert r["entries"] == 2
     assert r["expired"] is False
 

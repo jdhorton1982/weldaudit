@@ -25,6 +25,7 @@ from ..aml import Aml, SizeLimit
 from ..db import Database
 from ..mtrname import _SPEC as _SPEC_PATTERN
 from ..mtrname import normalise_heat, same_heat_differently_read
+from ..weldmap import NOT_A_HEAT_NOTE
 from . import Finding, register
 
 
@@ -187,7 +188,13 @@ def heat_without_certificate(db: Database, project_id: int, run_id: str) -> list
     wholesale = _uncertified_lines(db, project_id, certified)
 
     findings: list[Finding] = []
-    for key, rec in sorted(_welded_heats(db, project_id).items()):
+    welded = _welded_heats(db, project_id)
+    # Used only to sharpen the message: when the near match is itself installed
+    # somewhere in the package, the drawing is contradicting itself rather than
+    # the certificate being absent, and saying so saves a search for a document
+    # that is already in the book.
+    welded_keys = set(welded)
+    for key, rec in sorted(welded.items()):
         if key in certified:
             continue
         if rec.get("where") == "as-built" and rec["segment"] in wholesale:
@@ -202,9 +209,12 @@ def heat_without_certificate(db: Database, project_id: int, run_id: str) -> list
                     "message": (
                         f"No certificate for heat {rec['heat']} "
                         f"({_where(rec)}), but a certificate for "
-                        f"{near['heat']} is on file - one character different. "
-                        f"Probably a transcription error; confirm which heat was "
-                        f"actually installed."
+                        f"{near['heat']} is on file - {_how_close(key, near_key)}. "
+                        f"Probably the same heat written two ways; confirm which "
+                        f"heat was actually installed."
+                        + (f" The same package also calls it {near['heat']} "
+                           f"elsewhere, which does have its certificate."
+                           if near_key in welded_keys else "")
                     ),
                     "detail": _detail(
                         welds=", ".join(rec["welds"]), line=rec["line"],
@@ -248,23 +258,77 @@ def _where(rec: dict) -> str:
             f"({n} weld end{'s' if n != 1 else ''})")
 
 
-def _nearest_heat(key: str, certified: dict[str, list]) -> tuple[str, dict | None]:
-    """The closest certified heat, if it is close enough to be a typo.
+#: How much of a heat two callouts must share before one being the start of
+#: the other means anything. Four characters, the same figure MTR-12 uses for
+#: the melt-versus-piece case it has always recognised.
+_ENOUGH_SHARED = 4
 
-    Only same-length, single-character differences count.  Anything looser
-    starts matching genuinely different heats from the same mill run, which
-    would hide real missing certificates behind a plausible-looking excuse.
+#: How many characters may differ before two heats are different heats. Two,
+#: not one: a drafter typing a heat off a mill certificate produces `391L144`
+#: for `391K44` - a misread letter and a doubled digit at once - and the old
+#: single-character limit called that a different heat entirely.
+_CLOSE_ENOUGH = 2
+
+
+def _how_close(key: str, other: str) -> str:
+    """Why these two look like one heat, in words an auditor can check."""
+    short, long = sorted((key, other), key=len)
+    if len(short) >= _ENOUGH_SHARED and long.startswith(short):
+        return f"the same heat with {long[len(short):]!r} on the end"
+    from rapidfuzz.distance import Levenshtein
+
+    d = Levenshtein.distance(key, other)
+    # Spelled out: "1 character different" in the middle of a sentence reads
+    # like a field from a form rather than something a person wrote.
+    count = {1: "one", 2: "two", 3: "three"}.get(d, str(d))
+    where = "" if len(key) == len(other) else ", and one longer than the other"
+    return f"{count} character{'s' if d != 1 else ''} different{where}"
+
+
+def _nearest_heat(key: str, certified: dict[str, list]) -> tuple[str, dict | None]:
+    """The closest certified heat, if it is close enough to be the same heat.
+
+    **A hit here never certifies anything.** It changes what the finding says,
+    not whether it is made: the heat is still reported, and the message names
+    the certificate and asks which heat was actually installed. That is the
+    whole reason this can afford to be generous where the exact join cannot -
+    a wrong guess costs a question, where a wrong *match* would let a joint
+    pass as certified against material nobody checked.
+
+    Three ways of being close, in order of how sure they are:
+
+    * one is the start of the other, sharing at least four characters. The
+      melt is `418390` and the piece is `418390-3`; the mill certificate and
+      the heat map each write the one they were given.
+    * the same length, up to two characters different. `70B55WX` read off a
+      drawing as `70055WX` - D for 0, the commonest misread there is.
+    * different lengths, up to two characters different. `K20628` written as
+      `10517`, the leading letter lost.
+
+    The old rule was same-length and exactly one character, which discarded
+    every example above bar the second. On one real package that left 21 heats
+    reported as having no certificate while the certificate sat in the book.
     """
     from rapidfuzz.distance import Levenshtein
 
+    if len(key) < _ENOUGH_SHARED:
+        return "", None
+
     best_key, best_dist = "", 99
     for candidate in certified:
-        if len(candidate) != len(key):
+        if not candidate:
             continue
-        d = Levenshtein.distance(key, candidate, score_cutoff=2)
-        if d < best_dist:
+        # A shared stem is the strongest signal, so it wins outright.
+        short, long = sorted((key, candidate), key=len)
+        if len(short) >= _ENOUGH_SHARED and long.startswith(short):
+            return candidate, dict(certified[candidate][0])
+        d = Levenshtein.distance(key, candidate, score_cutoff=_CLOSE_ENOUGH + 1)
+        # A difference has to be small against the length of the thing: two
+        # characters out of five is a different heat, two out of eight is a
+        # typo.
+        if d <= _CLOSE_ENOUGH and d * 3 <= len(short) and d < best_dist:
             best_key, best_dist = candidate, d
-    if best_dist == 1 and len(key) >= 5:
+    if best_key:
         return best_key, dict(certified[best_key][0])
     return "", None
 
@@ -706,6 +770,59 @@ def no_certificates(db: Database, project_id: int, run_id: str) -> list[Finding]
             "document_id": None, "page_no": None,
         }
     ]
+
+
+@register("MTR-13", "A heat callout that is not a heat number")
+def callout_is_not_a_heat(db: Database, project_id: int, run_id: str) -> list[Finding]:
+    """An `HT:` on a drawing carrying something that is not a heat.
+
+    A drafter labels the whole bill of material with the same marker, so the
+    fitting's catalogue code and the line's nominal bore arrive wearing `HT:`
+    alongside the melt numbers. `HT: DN40` is a one-inch line. `HT: 3F-F77P-SE`
+    is a flange out of a catalogue.
+
+    Taken at face value each one becomes a heat with no certificate, and an
+    auditor is sent looking for an MTR that was never going to exist - three
+    phantom criticals on the package this was written against. They are not
+    read as heats, and they are reported here instead of being dropped,
+    because a callout the audit quietly ignored is a drawing error nobody
+    finds. Minor: the line is fine, the drawing is untidy.
+    """
+    rows = db.q(
+        """SELECT segment, heat, note, drawing_no, document_id
+           FROM installed_heat
+           WHERE project_id=? AND heat_key='' AND note LIKE ?
+           ORDER BY segment, heat""",
+        (project_id, NOT_A_HEAT_NOTE + "%"),
+    )
+    by_segment: dict[str, list] = {}
+    for r in rows:
+        by_segment.setdefault(r["segment"] or "", []).append(r)
+
+    findings: list[Finding] = []
+    for segment, items in by_segment.items():
+        seen: dict[str, str] = {}
+        for r in items:
+            seen.setdefault(r["heat"], r["note"][len(NOT_A_HEAT_NOTE):])
+        shown = "; ".join(f"{h} ({why})" for h, why in sorted(seen.items())[:6])
+        more = f", and {len(seen) - 6} more" if len(seen) > 6 else ""
+        findings.append({
+            "project_id": project_id, "run_id": run_id, "rule": "MTR-13",
+            "severity": "minor", "segment": segment,
+            "subject": f"{len(seen)} callout{'s' if len(seen) != 1 else ''}",
+            "message": (
+                f"{len(seen)} `HT:` callout{'s' if len(seen) != 1 else ''} on the "
+                f"drawings for {segment or 'this project'} "
+                f"{'are' if len(seen) != 1 else 'is'} not a heat number: "
+                f"{shown}{more}. These were not read as heats, so no "
+                f"certificate is expected for them; the drawing is using the "
+                f"heat marker for something else."
+            ),
+            "detail": _detail(callouts="; ".join(sorted(seen)),
+                              drawing=items[0]["drawing_no"]),
+            "document_id": items[0]["document_id"], "page_no": None,
+        })
+    return findings
 
 
 @register("MTR-09", "No approved materials list available")

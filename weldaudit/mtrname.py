@@ -3,7 +3,7 @@
 MTRs in this corpus are named by whoever filed them, and there are at least
 four conventions in active use::
 
-    071B33 - 16IN 150 RFWN FLANGE STD A105N XTO-414.pdf   heat first
+    082C44 - 16IN 150 RFWN FLANGE STD A105N XTO-414.pdf   heat first
     377314022-003 ~ 16IN 150 TRUNNION BV CS NACE.pdf      heat first, tilde
     4F214-FLG-WN-2IN-CL600-SCH160-A105N.pdf               heat first, dash-packed
     FLANGE 3 INCH SCH 80- 4F318P.pdf                      heat last
@@ -75,10 +75,10 @@ _DOCUMENT = re.compile(
 _FIGURE = re.compile(r"\bFIG\.?\s*#?\s*\d+[A-Z]?\b", re.IGNORECASE)
 
 #: A valve model code, which is how the valve certificates are filed:
-#: `5F-F03N-SE BAYLOR 3000 THRD BALL VALVE`, `8F-T63SN-RF`, `6F-F13N-RF15.5`,
+#: `5F-F08P-SE BAYLOR 3000 THRD BALL VALVE`, `8F-T63SN-RF`, `6F-F13N-RF15.5`,
 #: `F-AE 2IN 600 YARROW CAP`. Size, then the maker's figure, then the facing —
 #: no heat anywhere in it. Left alone, each piece in turn looks heat-shaped:
-#: these files were filed under 3000, then F03N, then RF15.5, none of which is
+#: these files were filed under 3000, then F08P, then RF15.5, none of which is
 #: a melt. A certificate whose filename does not name a heat is meant to yield
 #: none; that is a finding of its own, and a truthful one.
 _VALVE_FIGURE = re.compile(
@@ -95,7 +95,7 @@ _DIMENSION = re.compile(r"^\d{1,2}(\.\d+)?\s*[xX]\s*\.?\d+(\.\d+)?$")
 _HEATISH = re.compile(r"^(?=.*\d)[A-Z0-9][A-Z0-9./-]{2,17}$", re.IGNORECASE)
 
 #: The strongest convention in the corpus: a heat, then a spaced separator,
-#: then the description - "071B33 - 16IN 150 RFWN FLANGE", "CCDS - 2IN 300 RF".
+#: then the description - "082C44 - 16IN 150 RFWN FLANGE", "CCDS - 2IN 300 RF".
 #: The trailing whitespace is what distinguishes this from a dash-packed name
 #: such as "4F214-FLG-WN-2IN", where the dashes are joining description parts.
 _LEADING_HEAT = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9./-]{1,17}?)\s*[-~]\s+")
@@ -165,11 +165,29 @@ def _is_not_heat(token: str) -> bool:
     )
 
 
+def _whole_name_is_not_a_heat(stem: str) -> bool:
+    """Whether the filename is a part number rather than a heat.
+
+    `3F-F77P-SE.pdf` already yields nothing, because no fragment of it looks
+    like a heat on its own. `0.5F-F08P-SE.pdf` is the same kind of name and
+    yielded `0.75F`, a fragment that happens to pass the heat test by itself.
+    The whole name is what marks it a catalogue code, so the whole name is
+    what has to be asked - and the same shapes answer for a drawing callout
+    and for a filename, because a drafter and a filer are copying from the
+    same tag.
+    """
+    from .weldmap import why_not_a_heat
+
+    return bool(why_not_a_heat(stem.strip()))
+
+
 def parse(filename: str) -> MtrIdentity:
     """Pull heat number and material attributes out of an MTR filename."""
     stem = re.sub(r"\.(pdf|PDF)$", "", filename)
     toks = _tokens(stem)
     ident = MtrIdentity(description=re.sub(r"\s+", " ", stem).strip())
+    if _whole_name_is_not_a_heat(stem):
+        return ident           # a part number; no heat, and not a mis-parse
 
     # -- attributes ---------------------------------------------------------
     for t in toks:

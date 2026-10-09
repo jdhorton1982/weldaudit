@@ -73,12 +73,50 @@ MAX_CALLOUT_WORDS = 8
 _HEAT = re.compile(r"^HT\s*[#:]?\s*(.+)$", re.IGNORECASE)
 
 #: A valve figure number, which the draughtsmen write under an HT callout
-#: because it is how a valve is identified — `HT: 2F-F33N-RF`, matching the
-#: valve dossier `2F-F33N-RF BAYLOR 2IN 300 RF FP BV.pdf`. It is not a heat and
+#: because it is how a valve is identified — `HT: 3F-F99P-SE`, matching the
+#: valve dossier `3F-F99P-SE BAYLOR 2IN 300 RF FP BV.pdf`. It is not a heat and
 #: there will never be a mill certificate for it, so reporting one as
 #: uncertified is a permanent false critical.
 _VALVE_FIGURE = re.compile(
     r"^\d+(?:\.\d+)?[A-Z]{1,2}-[A-Z]\d{2}[A-Z](?:-[A-Z]{2})?$", re.IGNORECASE)
+
+#: Things written into an `HT:` callout that are not heat numbers.
+#:
+#: A drafter labels the whole bill of material with `HT:`, so the fitting's
+#: catalogue code and the line's bore arrive wearing the same marker as the
+#: melt. Left alone each one becomes a heat nobody can produce a certificate
+#: for, and an auditor is sent looking for an MTR that was never going to
+#: exist. Reported rather than dropped - see NOT_A_HEAT_NOTE.
+#:
+#: Matched by shape, not by a list: these change with every fitting catalogue.
+_NOT_A_HEAT: tuple[tuple[str, "re.Pattern[str]"], ...] = (
+    # DN40, DN 50 - the nominal bore of the line.
+    ("a nominal bore, not a heat",
+     re.compile(r"^DN\s*\d{1,4}$", re.IGNORECASE)),
+    # 3F-F77P-SE, IF-F08P, 0.5-F08P-SE, 1F--F08P - flange and fitting codes.
+    # The F-F pair is the giveaway and survives the typos around it.
+    # 3F-F77P-SE, IF-F08P, 0.5-F08P-SE, 1F--F08P, and the fractions written
+    # out as digits-and-a-dash: 7-8F-F08P-SE is three-quarter inch.
+    ("a fitting catalogue code, not a heat",
+     re.compile(r"^(?:\d+-\d+|[0-9.]*)[A-Z]{0,2}-{1,2}F\d*[A-Z0-9]*"
+                r"(?:-[A-Z]{2})?$", re.IGNORECASE)),
+)
+
+#: Written into installed_heat.note so a rule can report the callout instead of
+#: it vanishing. A silently dropped callout is a drawing error nobody is told
+#: about, which is the failure this whole module exists to avoid.
+NOT_A_HEAT_NOTE = "not a heat: "
+
+
+def why_not_a_heat(heat: str) -> str:
+    """Why this callout is not a heat number, or '' if it looks like one."""
+    heat = (heat or "").strip()
+    if _VALVE_FIGURE.match(heat):
+        return "a valve figure number, not a heat"
+    for reason, shape in _NOT_A_HEAT:
+        if shape.match(heat):
+            return reason
+    return ""
 
 #: Welder stencils as the callouts write them: `ARO/ARV`, `AO28/AM53`, `EM93`.
 _STENCILS = re.compile(r"^[A-Z]{2,4}\d{0,3}(?:\s*/\s*[A-Z]{2,4}\d{0,3})*$")
@@ -144,7 +182,7 @@ def parse_heat_token(text: str) -> str:
 
     The separator between `HT` and the number is written every way there is —
     `HT: 1234`, `HT#1234`, `HT - 1234` — so it is stripped rather than
-    matched, which is what stops a heat coming back as `-071B33`.
+    matched, which is what stops a heat coming back as `-082C44`.
     """
     m = _HEAT.match((text or "").strip())
     if not m:
@@ -152,9 +190,9 @@ def parse_heat_token(text: str) -> str:
     heat = m.group(1).strip().strip("#:-–—.").strip()
     if not heat or not any(c.isdigit() for c in heat):
         return ""
-    if _VALVE_FIGURE.match(heat):
+    if why_not_a_heat(heat):
         return ""
-    # `HT# 652583/3` is one heat with a plate suffix, not two heats.
+    # `HT# 418393/3` is one heat with a plate suffix, not two heats.
     return heat
 
 

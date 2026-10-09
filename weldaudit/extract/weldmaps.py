@@ -22,7 +22,8 @@ import pymupdf
 from ..db import Database
 from ..mtrname import normalise_heat
 from ..weldmap import (
-    MIN_UNKNOWN_PREFIX, group_spans, is_concentrated, parse_heat_token,
+    _HEAT, MIN_UNKNOWN_PREFIX, NOT_A_HEAT_NOTE, group_spans, is_concentrated,
+    parse_heat_token, why_not_a_heat,
 )
 from .dwr import known_nde_prefixes
 
@@ -35,7 +36,7 @@ HEAT_SOURCE = "heat_map_text"
 MIN_TEXT = 120
 
 #: LINE NO. as the title blocks write it. Both site conventions appear:
-#: `DTD22MP-LP-16-1A` on PLU, `16"-A1-0-PG-0417` on GL 31.
+#: `JOB7MP-LP-16-1A` on PLU, `16"-A1-0-PG-0417` on GL 31.
 _LINE_NO = re.compile(
     r"\b(?:DTD\d*MP[-_][A-Z]{2}[-_]\d{1,2}[-_][0-9A-Z]+|"
     r"\d{1,2}\"?[-_][A-Z0-9]{2}[-_]\d[-_][A-Z]{2}[-_]\d{3,4})\b",
@@ -55,14 +56,16 @@ def _spans(page) -> list[tuple[float, float, float, float, str]]:
     return out
 
 
-def read_page(page, allow_short: frozenset[str]) -> tuple[list, list[str], str]:
+def read_page(page, allow_short: frozenset[str]
+              ) -> tuple[list, list[str], str, list[tuple[str, str]]]:
     """Callouts, heats and the line number from one drawing sheet."""
     spans = _spans(page)
     if sum(len(s[4]) for s in spans) < MIN_TEXT:
-        return [], [], ""
+        return [], [], "", []
 
     line_no = ""
     heats: list[str] = []
+    not_heats: list[tuple[str, str]] = []
     remaining: list[tuple[float, float, float, float, str]] = []
 
     for span in spans:
@@ -72,9 +75,19 @@ def read_page(page, allow_short: frozenset[str]) -> tuple[list, list[str], str]:
         if heat := parse_heat_token(text):
             heats.append(heat)
             continue
+        # An `HT:` callout the parser will not accept as a heat. Kept, with
+        # the reason, rather than discarded: a bore or a fitting code written
+        # into a heat callout is a drawing error, and one nobody is told about
+        # is worse than one reported quietly.
+        if (m := _HEAT.match(text.strip())):
+            said = m.group(1).strip().strip("#:-–—.").strip()
+            if said and (reason := why_not_a_heat(said)):
+                not_heats.append((said, reason))
+                continue
         remaining.append(span)
 
-    return group_spans(remaining, allow_short=allow_short), heats, line_no
+    return (group_spans(remaining, allow_short=allow_short), heats, line_no,
+            not_heats)
 
 
 def extract(db: Database, project_id: int) -> tuple[int, int, int]:
@@ -122,7 +135,8 @@ def extract(db: Database, project_id: int) -> tuple[int, int, int]:
         trust_welds = is_concentrated(c.prefix for page in pages for c in page[0])
 
         found = False
-        for page_no, (callouts, page_heats, line_no) in enumerate(pages, start=1):
+        for page_no, (callouts, page_heats, line_no, page_not_heats) in enumerate(
+                pages, start=1):
             for callout in (callouts if trust_welds else ()):
                 found = True
                 welds.append((
@@ -135,6 +149,15 @@ def extract(db: Database, project_id: int) -> tuple[int, int, int]:
                 heats.append((
                     project_id, doc["id"], doc["segment"] or "", line_no, line_no,
                     heat, normalise_heat(heat), "", HEAT_SOURCE,
+                ))
+            # Stored with an empty heat_key, so every rule that joins on the
+            # key passes straight over them and only the rule that reports
+            # them has to know they exist.
+            for said, reason in page_not_heats:
+                found = True
+                heats.append((
+                    project_id, doc["id"], doc["segment"] or "", line_no, line_no,
+                    said, "", NOT_A_HEAT_NOTE + reason, HEAT_SOURCE,
                 ))
         read += 1 if found else 0
 
