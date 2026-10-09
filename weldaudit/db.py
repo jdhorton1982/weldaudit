@@ -580,6 +580,48 @@ CREATE TABLE IF NOT EXISTS procedure (
 );
 CREATE INDEX IF NOT EXISTS ix_procedure ON procedure(project_id, wps_key);
 
+-- One riser checklist, filled in by the inspector at post-hydro restoration
+-- and at the system PSRR walk. GPPB-0105 requires it in the field package;
+-- it is the only document that records where a riser physically is.
+CREATE TABLE IF NOT EXISTS riser (
+    id          INTEGER PRIMARY KEY,
+    project_id  INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+    document_id INTEGER REFERENCES document(id),
+    segment     TEXT,
+    description TEXT,             -- "FG SEG B TO BFFR PAD PLU-22"
+    serial      TEXT,             -- riser serial / package number
+    latitude    REAL,
+    longitude   REAL,
+    drain_plugs TEXT,             -- the form's own box: Yes | No | NA
+    photo       TEXT,             -- "picture taken with coordinates stamped"
+    pipe_size   TEXT,
+    grade       TEXT,
+    service     TEXT,
+    filled_on   TEXT,
+    inspector   TEXT,
+    signature   TEXT,
+    source      TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_riser ON riser(project_id, segment);
+
+-- One valve listed on a riser checklist. The checklist is the only place a
+-- riser valve's serial is written down against the riser it sits on.
+CREATE TABLE IF NOT EXISTS riser_valve (
+    id          INTEGER PRIMARY KEY,
+    project_id  INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+    riser_id    INTEGER REFERENCES riser(id) ON DELETE CASCADE,
+    document_id INTEGER REFERENCES document(id),
+    row_no      INTEGER,
+    manufacturer TEXT,
+    serial      TEXT,
+    serial_key  TEXT,             -- upper-cased, punctuation stripped
+    valve_type  TEXT,
+    size        TEXT,
+    torqued_on  TEXT,             -- the form's "Date Torqued"
+    blinds      TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_riser_valve ON riser_valve(project_id, serial_key);
+
 -- One bolted flange joint, as recorded on a flange (torque) log.
 CREATE TABLE IF NOT EXISTS flange (
     id          INTEGER PRIMARY KEY,

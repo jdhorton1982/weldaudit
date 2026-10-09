@@ -304,6 +304,9 @@
   .sev em { display: block; font-style: normal; font-weight: 600; font-size: 10px;
             letter-spacing: 0; color: var(--muted); margin-top: 2px; }
   .miss { color: var(--major); font-size: 12px; }
+  /* Declared empty is not a fault, so it does not get the warning colour a
+     missing section gets - it is a statement the auditor reads and accepts. */
+  .muted { color: var(--muted); font-size: 12px; }
 
   /* ---- the mark, animated ------------------------------------------------
      It pops out of the corner, runs a bead round the pipe, then strikes the
@@ -1563,13 +1566,20 @@ async function loadSummary() {
       </tr>`).join('')
       : `<tr><td class="empty">No as-built sheet found for this project.</td></tr>`) + '</tbody>';
 
+  // Declared-empty sits beside missing rather than inside it. A section with
+  // `NO DATA.pdf` in it was considered and is empty; a missing one was not
+  // answered at all. Neither counts toward the percentage, so both reasons
+  // have to be visible or the bar looks short for no reason on screen.
   $('#completeness').innerHTML = `<thead><tr>
       <th>Segment</th><th>Files</th><th>% complete</th>
-      <th>Missing required sections</th></tr></thead><tbody>`
+      <th>Missing required sections</th>
+      <th title="The contractor filed NO DATA here: considered, nothing to file"
+          >Declared empty</th></tr></thead><tbody>`
     + s.completeness.map(c => `<tr>
         <td>${esc(c.segment)}</td><td>${c.total_files}</td>
         <td><div class="bar" title="${c.pct_complete}%"><i style="width:${c.pct_complete}%"></i></div></td>
         <td class="miss">${esc(c.missing_required.join(', ')) || '—'}</td>
+        <td class="muted">${esc((c.declared_empty || []).join(', ')) || '—'}</td>
       </tr>`).join('') + '</tbody>';
 }
 

@@ -98,6 +98,15 @@ KIND_RULES: tuple[tuple[str, str], ...] = (
     ("weldtrace_stamps", r"annotation ?attachments|annotations ?export"),
     ("weldtrace_test_plan", r"test plan|qaqc.?frm.?4347"),
     ("weldtrace_isos", ISOS_AND_PIDS),
+    # A placeholder standing for a section the job has nothing to file in.
+    # The contractor drops `NO DATA.pdf` or `NOT APPLICABLE.pdf` into the
+    # folder to show it was considered and is empty - 77 of them in one
+    # package, 150 in another. Anchored to the whole filename so a real
+    # document called "MTR no data available.pdf" is not swallowed.
+    #
+    # Matched first: it sits inside a section folder, and every pattern below
+    # looks at the folder when the filename says nothing.
+    ("no_data", r"^(no[\s-]*data|not applicable|n[/\s-]?a|none)\.[a-z0-9]+$"),
     ("nde_reader_sheet", r"reader sheet"),
     ("nde_tech_cert", r"nde certs?|tech certs?"),
     ("nde_procedure", r"\bnde\b.*procedures?|procedures?.*\bnde\b|individual procedures?|company procedures?"),
@@ -111,6 +120,9 @@ KIND_RULES: tuple[tuple[str, str], ...] = (
     # `log` is always qualified by `nde` or `rig`: a bare "tech log" would also
     # match the folder holding the certificates.
     ("nde_rig_log", r"nde (?:rig |tech )?log|rig log"),
+    # GPPB-0105 (h). Filed under valve documents rather than a section of its
+    # own, and written "Riser Cklst" as often as "Riser Checklist".
+    ("riser_checklist", r"riser\s*(cklst|checklist|ck ?list)"),
     ("weld_log_csv", r"weld log summary|master_weld_log"),
     ("pipes_csv", r"pipes_export"),
     # Named for the content, not the format: on some jobs the weld and heat

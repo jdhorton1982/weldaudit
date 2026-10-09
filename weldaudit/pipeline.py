@@ -14,6 +14,7 @@ from . import rules, stages
 from .db import Database
 from .extract import (
     asbuilt, corrections, dwr, flanges, instruments, materials, mtrtext, ndelog,
+    risers,
     readings,
     readersheets, roster,
     vision_pass,
@@ -186,6 +187,9 @@ def run(
     joints, maps, wrenches = flanges.extract(db, project_id)
     counts["flanges"], counts["flange_maps"] = joints, maps
     counts["instruments"] += wrenches
+
+    say("extract", "Reading riser checklists")
+    counts["risers"], counts["riser_valves"] = risers.extract(db, project_id)
 
     # Vision results live in a cache keyed by document fingerprint, but the
     # tables they populate are cleared by re-indexing. Replaying weld reports

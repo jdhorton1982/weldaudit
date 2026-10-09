@@ -628,17 +628,25 @@ def _completeness_sheet(db, project_id, wb, head) -> None:
     ws.write(0, 1, "% complete", head)
     ws.write(0, 2, "Missing required sections", head)
     ws.set_column(2, 2, 60)
+    # Beside the missing ones, never folded into them: a section the
+    # contractor filed `NO DATA.pdf` in was considered and is empty, which is
+    # a different statement from a section nobody filled. The percentage
+    # counts neither as complete, so the reason has to be on the sheet or the
+    # figure looks wrong for no visible cause.
+    ws.write(0, 3, "Declared empty (NO DATA filed)", head)
+    ws.set_column(3, 3, 60)
     for i, s in enumerate(SECTIONS):
-        ws.write(0, 3 + i, f"{s.number} {s.name}", head)
-        ws.set_column(3 + i, 3 + i, 6)
+        ws.write(0, 4 + i, f"{s.number} {s.name}", head)
+        ws.set_column(4 + i, 4 + i, 6)
     ws.freeze_panes(1, 1)
 
     for r, c in enumerate(completeness(db, project_id), start=1):
         ws.write(r, 0, c["segment"])
         ws.write(r, 1, c["pct_complete"] / 100)
         ws.write(r, 2, ", ".join(c["missing_required"]))
+        ws.write(r, 3, ", ".join(c.get("declared_empty") or ()))
         for i, s in enumerate(SECTIONS):
-            ws.write(r, 3 + i, c["sections"].get(s.number, 0))
+            ws.write(r, 4 + i, c["sections"].get(s.number, 0))
 
 
 def _rules_sheet(wb, head, wrap) -> None:

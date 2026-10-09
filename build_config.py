@@ -151,6 +151,7 @@ HIDDEN = [
     "weldaudit.rules.hydrotest", "weldaudit.rules.materials",
     "weldaudit.rules.nde_coverage", "weldaudit.rules.ndetech",
     "weldaudit.rules.registers", "weldaudit.rules.review",
+    "weldaudit.rules.risers",
     "weldaudit.rules.roster", "weldaudit.rules.scope",
     "weldaudit.rules.welders", "weldaudit.rules.weldtrace",
     "weldaudit.rules.wps",

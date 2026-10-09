@@ -187,6 +187,7 @@ def index_project(
                       "flange", "flange_map", "procedure", "welder_roster", "backfill_release",
                       "asbuilt_joint", "weldtrace_exam", "weldtrace_weld",
                       "weldtrace_heat", "weldtrace_stamp",
+                      "riser_valve", "riser",
                       "weld"):
             c.execute(f"DELETE FROM {table} WHERE project_id=?", (project_id,))
         c.execute("DELETE FROM document WHERE project_id=?", (project_id,))
@@ -264,24 +265,38 @@ def _flush(db: Database, batch: list[tuple]) -> None:
 def completeness(db: Database, project_id: int) -> list[dict]:
     """Per-segment presence of each of the 22 book sections."""
     rows = db.q(
-        """SELECT segment, section_no, COUNT(*) AS n
+        """SELECT segment, section_no, COUNT(*) AS n,
+                  SUM(CASE WHEN kind='no_data' THEN 1 ELSE 0 END) AS placeholders
            FROM document WHERE project_id=? GROUP BY segment, section_no""",
         (project_id,),
     )
     by_segment: dict[str, dict[int | None, int]] = {}
+    # A section holding nothing but `NO DATA.pdf` is not the same as a section
+    # that is filled in, and it is not the same as one that is absent either.
+    # The contractor considered it and had nothing to file. Counted apart so
+    # the percentage does not read as complete on the strength of a
+    # placeholder - 77 of them in one package, 150 in another.
+    declared_empty: dict[str, set[int]] = {}
     for r in rows:
         by_segment.setdefault(r["segment"], {})[r["section_no"]] = r["n"]
+        if r["section_no"] is not None and r["placeholders"] == r["n"]:
+            declared_empty.setdefault(r["segment"], set()).add(r["section_no"])
 
     out: list[dict] = []
     for segment, counts in sorted(by_segment.items()):
-        present = {n for n, c in counts.items() if n is not None and c > 0}
+        empty = declared_empty.get(segment, set())
+        present = {n for n, c in counts.items()
+                   if n is not None and c > 0 and n not in empty}
         missing = [s for s in REQUIRED_SECTIONS if s.number not in present]
         out.append(
             {
                 "segment": segment,
                 "total_files": sum(counts.values()),
                 "sections": {s.number: counts.get(s.number, 0) for s in SECTIONS},
-                "missing_required": [f"{s.number} {s.name}" for s in missing],
+                "missing_required": [f"{s.number} {s.name}" for s in missing
+                                     if s.number not in empty],
+                "declared_empty": [f"{s.number} {s.name}" for s in SECTIONS
+                                   if s.number in empty],
                 "pct_complete": round(
                     100 * (len(REQUIRED_SECTIONS) - len(missing)) / len(REQUIRED_SECTIONS)
                 ),
