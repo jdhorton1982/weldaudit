@@ -101,7 +101,16 @@ KIND_RULES: tuple[tuple[str, str], ...] = (
     ("nde_reader_sheet", r"reader sheet"),
     ("nde_tech_cert", r"nde certs?|tech certs?"),
     ("nde_procedure", r"\bnde\b.*procedures?|procedures?.*\bnde\b|individual procedures?|company procedures?"),
-    ("nde_rig_log", r"nde rig log|nde log"),
+    # "NDE Tech Log" is the same document as "NDE Rig Log" - one package files
+    # it under `Tech Log_Tech Certs`, in a sheet named "NDE Rig Log" whose
+    # header reads PROJECT NDE TECH RIG LOG. Without `tech`, the filename
+    # matched nothing, the folder was consulted instead, and `tech certs` in
+    # the folder name filed the rig log as a technician's certificate - so
+    # NDT-06 reported no rig log on a job that had one in every segment.
+    #
+    # `log` is always qualified by `nde` or `rig`: a bare "tech log" would also
+    # match the folder holding the certificates.
+    ("nde_rig_log", r"nde (?:rig |tech )?log|rig log"),
     ("weld_log_csv", r"weld log summary|master_weld_log"),
     ("pipes_csv", r"pipes_export"),
     # Named for the content, not the format: on some jobs the weld and heat

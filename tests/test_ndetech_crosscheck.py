@@ -34,7 +34,7 @@ def db(tmp_path):
 
 
 def logged(db, pid, name, *, rig="D", segment="20 LP", cert="2024-11-25",
-           arrived="2025-07-16", company="IIA FIELD SERVICES"):
+           arrived="2025-07-16", company="NORTHFIELD INSPECTION"):
     with db.tx() as c:
         c.execute(
             """INSERT INTO nde_tech(project_id, segment, company, name,
@@ -93,13 +93,54 @@ def test_two_certification_dates_for_one_person(db):
 
 
 def test_spellings_of_one_name_are_one_person(db):
-    # JACOB / JACOP, BREYDON BURKET / BURKETT, JUAN / JAUN RODRIGUEZ.
+    # JACOB / JACOP, BREYDON BURKET / BURKETT, JUAN / MARCO RODRIGUEZ.
     database, pid = db
     logged(database, pid, "JACOB CAMPBELL", segment="a", cert="2024-11-25")
     logged(database, pid, "JACOP CAMPBELL", segment="b", cert="2025-08-29")
     found = conflicting_cert_date(database, pid, "r")
     assert len(found) == 1
     assert "also spelled" in found[0]["message"]
+
+
+def test_two_people_sharing_a_first_name_are_two_people(db):
+    """A crew carrying two Juans.
+
+    Marco Silva on rig A and Marco Reyes on rig B share the token JUAN, and
+    taking a single shared token as proof merged them into one technician with
+    two certification dates. The log was then reported as contradicting itself
+    about a man who does not exist - on a real package, on a crew of three.
+    """
+    database, pid = db
+    for seg in ("a", "b", "c"):
+        logged(database, pid, "MARCO SILVA", rig="A", segment=seg, cert="2024-05-03")
+        logged(database, pid, "MARCO REYES", rig="B", segment=seg, cert="2023-10-22")
+    assert conflicting_cert_date(database, pid, "r") == []
+
+
+def test_a_shared_surname_is_still_not_two_people(db):
+    """The same trap from the other end: brothers on one crew."""
+    database, pid = db
+    logged(database, pid, "MARCO REYES", rig="A", segment="a", cert="2024-05-03")
+    logged(database, pid, "ANA REYES", rig="B", segment="a", cert="2023-10-22")
+    assert conflicting_cert_date(database, pid, "r") == []
+
+
+def test_a_surname_only_entry_still_joins_its_person(db):
+    """`REYES` on one sheet and `MARCO REYES` on another is one man, and the
+    surname is all there is to ask for."""
+    database, pid = db
+    logged(database, pid, "MARCO REYES", segment="a", cert="2024-05-03")
+    logged(database, pid, "REYES", segment="b", cert="2023-10-22")
+    found = conflicting_cert_date(database, pid, "r")
+    assert len(found) == 1
+
+
+def test_a_longer_surname_absorbs_a_second_slip(db):
+    """CARNEY against CARNIE is one man; five-letter names get no such room."""
+    database, pid = db
+    logged(database, pid, "ELENA MARSH", segment="a", cert="2024-03-24")
+    logged(database, pid, "ELENA MARSHE", segment="b", cert="2025-03-24")
+    assert len(conflicting_cert_date(database, pid, "r")) == 1
 
 
 def test_a_consistent_register_is_quiet(db):

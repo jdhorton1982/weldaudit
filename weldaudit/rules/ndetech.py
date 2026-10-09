@@ -379,13 +379,33 @@ def _same_person(a: str, b: str) -> bool:
     tokens_b = {t for t in re.split(r"[^A-Z]+", (b or "").upper()) if len(t) > 2}
     if not tokens_a or not tokens_b:
         return True          # nothing to compare - do not manufacture a finding
-    if tokens_a & tokens_b:
-        return True
-    # Allow one keystroke per surname pair: CAMBELL vs CAMPBELL.
-    return any(
-        DamerauLevenshtein.distance(x, y, score_cutoff=1) <= 1
-        for x in tokens_a for y in tokens_b
-    )
+
+    # One shared name is not one person. A crew carrying two Juans - Juan
+    # Rodriguez on rig A and Marco Reyes on rig B - shares the token JUAN, and
+    # taking that as proof merged them into one technician with two
+    # certification dates. The rig log was then reported as contradicting
+    # itself about a man who does not exist.
+    #
+    # So where both sides give a full name, both parts have to answer; where
+    # one side gives only a surname, that surname is all there is to ask for.
+    # A keystroke is still forgiven per pair: CAMBELL against CAMPBELL.
+    def close(x: str, y: str) -> bool:
+        if x == y:
+            return True
+        # A longer name can absorb a second slip and still be the same name:
+        # CARNEY against CARNIE. A short one cannot - at five characters two
+        # differences is a different name.
+        allowed = 2 if min(len(x), len(y)) >= 6 else 1
+        return DamerauLevenshtein.distance(x, y, score_cutoff=allowed) <= allowed
+
+    unmatched = set(tokens_b)
+    matched = 0
+    for x in tokens_a:
+        hit = next((y for y in unmatched if close(x, y)), None)
+        if hit is not None:
+            unmatched.discard(hit)
+            matched += 1
+    return matched >= min(len(tokens_a), len(tokens_b), 2)
 
 
 def _people(rows: list) -> list[list]:

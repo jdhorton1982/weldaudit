@@ -419,7 +419,18 @@ def sheet_without_weld(db: Database, project_id: int, run_id: str) -> list[Findi
     # against those ten welds reported two hundred and seventy-five orphans,
     # every one of them a statement about the map's size rather than the
     # sheet. Whether a series is thinly covered is the coverage table's job.
-    on_file = Counter(r["prefix"] for r in rows)
+    # Distinct shot ids on both sides, not rows against ids.
+    #
+    # A sheet lists a weld once per shot - the root, the cap, a repeat after a
+    # repair - so counting rows here measured how often the series was
+    # radiographed and compared it against how many welds were claimed. On a
+    # package where each weld averaged 1.8 shots that halved every ratio:
+    # AFB read as 0.45 covered when 94% of its welds were on a map, and the
+    # three best-covered series in the job were all dismissed as too thin to
+    # judge. The rule then said nothing about 74 orphaned sheets.
+    on_file = Counter()
+    for prefix, _nde_id in {(r["prefix"], r["nde_id"]) for r in rows}:
+        on_file[prefix] += 1
     covered = Counter(nde_id.split("-")[0] for nde_id in claimed)
     good_prefixes = {
         prefix for prefix in good_prefixes
