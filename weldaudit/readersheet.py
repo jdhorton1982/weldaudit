@@ -1,13 +1,13 @@
 """Reading an NDE examination report out of its text layer.
 
 Two filing conventions put the shot numbers in different places.  Bluewater and
-GL 31 name the sheet for the welds it covers — ``20IN LP 09.09.25
+Bluewater 4 name the sheet for the welds it covers — ``20IN LP 09.09.25
 GFB-037-040.pdf`` — so the filename alone establishes what exists.  Kestrel 8
-names its sheets for the *day* instead — ``DTD22 NDE 5.28.25 FG SEG.A RT
+names its sheets for the *day* instead — ``KST8 NDE 5.28.25 FG SEG.A RT
 RIG.A.pdf`` — and the shot numbers are only inside.  Sixty-five sheets, and
 the filename pass finds nothing in any of them.
 
-They are not scans.  The IIA Field Services form is generated, so its text
+They are not scans.  The Northfield Inspection form is generated, so its text
 layer is complete: weld id, result, pipe diameter and wall, welder stencils,
 technician, procedure and date.  That is more than the Bluewater filenames give,
 and it costs nothing to read.
@@ -50,7 +50,7 @@ HEADER_LABELS: dict[str, str] = {
     "location:": "location",
 }
 
-#: Header words naming each column, best first.  IIA issues a radiographic
+#: Header words naming each column, best first.  NFI issues a radiographic
 #: form and a liquid-penetrant one and they label the same columns
 #: differently, so each field accepts several spellings.
 #:
@@ -98,13 +98,13 @@ _WELD_ID = re.compile(r"^([A-Z]{2,5}-\d{1,4}[A-Z]{0,2})\.?$", re.IGNORECASE)
 _PRECISION_MARKERS = ("pndt", "precision")
 
 
-#: `Page: 3 of 4`. The IIA form prints the labels on every sheet and the crew
+#: `Page: 3 of 4`. The NFI form prints the labels on every sheet and the crew
 #: fills the numbers in on almost none: of 208 text-bearing Bluewater sheets, 200
 #: carry the words and the text comes out as a bare `Page:\nof\n`. Only the
 #: filled-in ones say anything, so a blank is silence rather than a claim.
 _PAGE_OF = re.compile(r"page\s*:?\s*(\d{1,3})\s*of\s*(\d{1,3})\b", re.IGNORECASE)
 
-#: `Ticket No: 18700172` on the IIA forms, `REF#: RT-1061-0794` on the
+#: `Ticket No: 18700172` on the NFI forms, `REF#: RT-1061-0794` on the
 #: Precision Group one. This is what ties a report's pages together when they
 #: are filed as separate PDFs, which is how the crew files them.
 _TICKET = re.compile(r"ticket\s*(?:no|#)?\s*:?\s*(\d{5,12})\b", re.IGNORECASE)
@@ -155,7 +155,7 @@ def stated_weld_count(text: str) -> int | None:
 def is_precision_group(words: list[Word]) -> bool:
     """Whether this page is a Precision Group examination report.
 
-    Worth naming because its text layer must **not** be parsed. The IIA forms
+    Worth naming because its text layer must **not** be parsed. The NFI forms
     are generated and their text is exact; these are scans carrying an OCR
     layer, and the OCR is wrong in the places that decide an audit:
 
@@ -251,7 +251,7 @@ def _labels(words: list[Word]) -> dict[str, tuple[Word, float]]:
 
 
 #: Widest gap between two words that are still one label. `Per` and `Diem:`
-#: sit two points apart; `Rodriguez` and the `Level:` that follows it, ninety.
+#: sit two points apart; `Silva` and the `Level:` that follows it, ninety.
 _LABEL_KERNING = 6.0
 
 
@@ -265,8 +265,8 @@ def _starts_a_label(word: Word, row: list[Word]) -> bool:
 
     **Immediately** is the load-bearing word. Any value whose last word happens
     to be followed somewhere on the line by a label would otherwise be treated
-    as part of it — the technician came out as "Juan", because `Level:` sits
-    further along the same row than `Rodriguez` does.
+    as part of it — the technician came out as "Marco", because `Level:` sits
+    further along the same row than `Silva` does.
     """
     if _text(word).endswith(":"):
         return True
@@ -289,7 +289,7 @@ def _value_for(label: Word, end_x: float, words: list[Word]) -> str:
     Bounded on the right by the next label, not merely the next field this
     module collects: ``Technician:`` is followed by ``Level:`` and ``Work
     Order:`` by ``Miles:``, and without them as boundaries their values are
-    swallowed into the field before — "Juan Rodriguez II" for the technician.
+    swallowed into the field before — "Marco Silva II" for the technician.
     """
     low, high = label[1] + _VALUE_DROP[0], label[1] + _VALUE_DROP[1]
     # The value may share the label's baseline, so the label's own words have
@@ -355,7 +355,7 @@ def _footer_y(words: list[Word]) -> float:
     measurement in a known column. That worked on the radiographic sheet and
     silently emptied the penetrant one, whose single row has neither — the
     reading is a bare `360 Degrees` and the columns are labelled differently,
-    so nothing on the row was recognisable. Two PLU sheets read as blank scans
+    so nothing on the row was recognisable. Two Kestrel sheets read as blank scans
     because of it.
     """
     by_line: dict[float, set[str]] = {}
@@ -396,7 +396,7 @@ def parse_page(words: list[Word]) -> Sheet:
 
     # The procedure is written as a bare code rather than against a label.
     for word in words:
-        if re.match(r"^IIA[-.][A-Z]{2}[-.]", _text(word), re.IGNORECASE):
+        if re.match(r"^NFI[-.][A-Z]{2}[-.]", _text(word), re.IGNORECASE):
             sheet.procedure = _text(word)
             break
 

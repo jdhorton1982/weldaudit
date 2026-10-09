@@ -16,10 +16,10 @@ been read, the essential variables come with it, and the one this corpus can
 actually test is the crew size: every API 1104 procedure in GPPB-0110 requires
 two or more welders on the root and hot pass of pipe 12.750" and over.
 
-The procedure identifiers themselves are the usual mess.  ``XTO-X60-6010/8010
-Rev.1`` on a weld log is ``XTO-X60-6010-8010 Rev.1`` in a certificate filename
-because a slash cannot go in a filename, and ``XTO-ASME PI HYP NACE`` is
-``XTO-ASME-P1-HYP-NACE`` with a letter I typed for the digit 1.  The first is
+The procedure identifiers themselves are the usual mess.  ``ACME-X60-6010/8010
+Rev.1`` on a weld log is ``ACME-X60-6010-8010 Rev.1`` in a certificate filename
+because a slash cannot go in a filename, and ``ACME-ASME PI HYP NACE`` is
+``ACME-ASME-P1-HYP-NACE`` with a letter I typed for the digit 1.  The first is
 normalised away; the second is reported as the near miss it is, because
 guessing at more normalisation rules is how a tool starts silently merging
 procedures that really are different.
@@ -186,7 +186,7 @@ def procedure_not_approved(db: Database, project_id: int, run_id: str) -> list[F
 def procedure_spelling(db: Database, project_id: int, run_id: str) -> list[Finding]:
     """Two references one character apart, or one spelled several ways.
 
-    `XTO-ASME PI HYP NACE` against `XTO-ASME-P1-HYP-NACE` is an I typed for a
+    `ACME-ASME PI HYP NACE` against `ACME-ASME-P1-HYP-NACE` is an I typed for a
     1 in an ASME P-number. Reporting it as an unknown procedure would send
     someone looking for a document that exists; reporting it as a spelling
     keeps the paperwork honest without inventing a normalisation rule.
@@ -201,7 +201,7 @@ def procedure_spelling(db: Database, project_id: int, run_id: str) -> list[Findi
         name = _headline(entry)
 
         # An unambiguous abbreviation of a filed procedure: a certificate
-        # saying `XTO-SS` where the register says `XTO-SS-Sec. IX`.
+        # saying `ACME-SS` where the register says `ACME-SS-Sec. IX`.
         matched, how = resolve(name, set(approved))
         if how == "abbreviated":
             full = approved[matched]["wps"]
@@ -345,8 +345,8 @@ def procedure_unused(db: Database, project_id: int, run_id: str) -> list[Finding
     if not approved or not references:
         return []
 
-    # Resolve first, so a certificate abbreviating `XTO-SS-Sec. IX` to
-    # `XTO-SS` does not leave that procedure counted as unused.
+    # Resolve first, so a certificate abbreviating `ACME-SS-Sec. IX` to
+    # `ACME-SS` does not leave that procedure counted as unused.
     referenced = {matched for e in references.values()
                   if (matched := resolve(_headline(e), set(approved))[0])}
     unused = sorted(p["wps"] for key, p in approved.items() if key not in referenced)

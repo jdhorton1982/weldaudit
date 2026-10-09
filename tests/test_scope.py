@@ -52,7 +52,7 @@ def add(db, pid, filename, section_no=None, section=None):
 def test_one_loose_pdf_is_reported(job):
     """The case as it happened."""
     db, pid, _ = job
-    add(db, pid, "A2401000 - 16IN EL 90 SCH40 SS XTO-242.pdf")
+    add(db, pid, "A2401000 - 16IN EL 90 SCH40 SS ACME-242.pdf")
     found = not_a_package(db, pid, "r1")
     assert len(found) == 1
     assert found[0]["rule"] == "SCOPE-02"

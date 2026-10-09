@@ -36,9 +36,9 @@ HEAT_SOURCE = "heat_map_text"
 MIN_TEXT = 120
 
 #: LINE NO. as the title blocks write it. Both site conventions appear:
-#: `JOB7MP-LP-16-1A` on PLU, `16"-A1-0-PG-0417` on GL 31.
+#: `JOB7MP-LP-16-1A` on Kestrel, `16"-A1-0-PG-0417` on Bluewater 4.
 _LINE_NO = re.compile(
-    r"\b(?:DTD\d*MP[-_][A-Z]{2}[-_]\d{1,2}[-_][0-9A-Z]+|"
+    r"\b(?:KST\d*MP[-_][A-Z]{2}[-_]\d{1,2}[-_][0-9A-Z]+|"
     r"\d{1,2}\"?[-_][A-Z0-9]{2}[-_]\d[-_][A-Z]{2}[-_]\d{3,4})\b",
     re.IGNORECASE,
 )

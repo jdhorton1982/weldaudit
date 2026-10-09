@@ -3,7 +3,7 @@
 MTRs in this corpus are named by whoever filed them, and there are at least
 four conventions in active use::
 
-    082C44 - 16IN 150 RFWN FLANGE STD A105N XTO-414.pdf   heat first
+    082C44 - 16IN 150 RFWN FLANGE STD A105N ACME-414.pdf   heat first
     377314022-003 ~ 16IN 150 TRUNNION BV CS NACE.pdf      heat first, tilde
     4F214-FLG-WN-2IN-CL600-SCH160-A105N.pdf               heat first, dash-packed
     FLANGE 3 INCH SCH 80- 4F318P.pdf                      heat last
@@ -12,7 +12,7 @@ four conventions in active use::
 
 Nothing here guesses.  A token becomes the heat number only once everything
 that is recognisably *not* a heat - a size, a schedule, a pressure class, a
-material spec, an internal XTO tag - has been ruled out.  Filenames that yield
+material spec, an internal ACME tag - has been ruled out.  Filenames that yield
 no heat are reported rather than silently skipped, because "we could not tell
 which heat this certificate covers" is itself an audit finding.
 """
@@ -45,7 +45,16 @@ _CLASS = re.compile(
     re.IGNORECASE)
 _GRADE = re.compile(r"^B?X?\d{2}[A-Z]?$", re.IGNORECASE)          # X42, X52, B, 52
 _MATERIAL = re.compile(r"^(CS|SS|316|316L|304|304L|LTCS|DSS|GALV|NACE|FBE|ARO)$", re.IGNORECASE)
-_TAG = re.compile(r"^(XTO|XTTO|XT0|TAG|PO|REV)\b", re.IGNORECASE)
+def _tag_pattern():
+    """Prefixes that mark an internal reference rather than a heat number.
+
+    Built from the site configuration rather than written in here: the
+    operator's tag belongs to the operator, and the next package comes from a
+    different one. See weldaudit/site.py.
+    """
+    from .site import tag_prefixes
+
+    return re.compile(r"^(" + "|".join(tag_prefixes()) + r")", re.IGNORECASE)
 _DESCRIPTOR = re.compile(
     r"^(FLANGE|FLG|PIPE|TEE|ELBOW|ELL?|EL|REDUCER|RED|CAP|BLIND|BLD|PLUG|UNION|"
     r"COUPLING|CPLG|NIPPLE|OLET|WELDOLET|SOCKOLET|THREDOLET|FLEXOLET|BW|SW|NPT|"
@@ -142,11 +151,14 @@ def _tokens(stem: str) -> list[str]:
     stem = re.sub(r"\bREV\s*\d+\b", " ", stem, flags=re.IGNORECASE)
     # A tilde or a long dash run is a separator between heat and description.
     stem = stem.replace("~", " ")
-    # An internal tag and its number are one thing. Splitting "XTO-421" left
+    # An internal tag and its number are one thing. Splitting "ACME-421" left
     # "421" standing alone at the end of the name, where the trailing-heat
     # rule adopted it: two gaskets were filed under heats 421 and 484, which
-    # are their XTO tags.
-    stem = re.sub(r"\b(XTO|XTTO|XT0|TAG|PO)\s*-?\s*\d+\b", " ", stem,
+    # are their ACME tags.
+    from .site import tag_prefixes
+
+    tags = "|".join(w for w in tag_prefixes() if w != "REV")
+    stem = re.sub(r"\b(" + tags + r")\s*-?\s*\d+\b", " ", stem,
                   flags=re.IGNORECASE)
     # A valve model code leads the name where a heat would, and every piece of
     # it in turn looks heat-shaped. Removed whole rather than picked apart.
@@ -159,7 +171,7 @@ def _tokens(stem: str) -> list[str]:
 def _is_not_heat(token: str) -> bool:
     return bool(
         _SIZE.match(token) or _SCHEDULE.match(token) or _CLASS.match(token)
-        or _MATERIAL.match(token) or _TAG.match(token) or _DESCRIPTOR.match(token)
+        or _MATERIAL.match(token) or _tag_pattern().match(token) or _DESCRIPTOR.match(token)
         or _MISC.match(token) or _SPEC_STRICT.match(token) or _GRADE.match(token)
         or _DIMENSION.match(token) or _DATE.match(token) or _DOCUMENT.match(token)
     )

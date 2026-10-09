@@ -6,7 +6,7 @@ is the only document in the book that writes down where a riser physically
 stands: latitude and longitude, to six decimal places, against the valves
 sitting on it.
 
-The form is a spreadsheet on XTO's standard template, and the template is read
+The form is a spreadsheet on ACME's standard template, and the template is read
 by label rather than by cell address. Contractors insert rows into these forms
 - a riser with five valves has four rows the template did not have - so a
 fixed grid reads the wrong cells on exactly the risers that carry the most.

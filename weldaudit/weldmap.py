@@ -9,8 +9,8 @@ belong together has to be worked out from where they sit.
 Three shapes appear in the corpus, and all three are handled here:
 
     AFB-19 ARO/ARV 8-01-25      one span - Kestrel 8
-    AFB-10 / 6/4/26 / EM93      three spans stacked at the same x - GL 31
-    AFB / 092                   the id itself split over two lines - GL 31
+    AFB-10 / 6/4/26 / EM93      three spans stacked at the same x - Bluewater 4
+    AFB / 092                   the id itself split over two lines - Bluewater 4
 
 Parsing this with a general identifier regex does not work, and the two ways
 it fails are worth naming because both produce welds that do not exist:
@@ -18,7 +18,7 @@ it fails are worth naming because both produce welds that do not exist:
 * run over a whole callout, ``AFB-19 ARO/ARV 8-01-25`` yields AFB-019 *and*
   AFB-001 and AFB-025, because the date's ``-01`` and ``-25`` read as bare
   continuations of the series;
-* run over a title block, ``DTD22-LP-16-1A`` yields LP-016.
+* run over a title block, ``KST8-LP-16-1A`` yields LP-016.
 
 So the grammar here is anchored instead: a callout is a span whose *first*
 token is an identifier and nothing else, and everything after that token is
@@ -48,9 +48,20 @@ _NOT_A_PREFIX = frozenset({
     # INCLUDED IN THE 150 SERIES TEST" becomes weld THE-150.
     "THE", "AND", "FOR", "SEE", "PER", "ALL", "NOT", "USE", "NEW", "OLD",
     "SERIES", "PAGE", "NOTE", "TEST", "LINE", "TYPE", "SIZE", "AFE", "NO",
-    # The job code, which prefixes every line number on Kestrel 8.
-    "DTD", "DTDMP",
 })
+
+
+def not_a_prefix() -> frozenset[str]:
+    """The generic stop-words, plus this job's own code.
+
+    A job writes its code in front of every line number, so a map full of
+    `<code>-LP-16-1A` reads as dozens of welds in a series named after the
+    job. The code differs from job to job and from operator to operator, so
+    it is configured rather than written in: see weldaudit/site.py.
+    """
+    from .site import job_codes
+
+    return _NOT_A_PREFIX | frozenset(job_codes())
 
 #: A weld map numbers its welds in one or two series — a single rig's prefix,
 #: sometimes two where crews met.  Where the identifiers on a sheet are spread
@@ -154,7 +165,7 @@ def parse_id_token(token: str, *, allow_short: frozenset[str] = frozenset()) -> 
     if not m:
         return None
     prefix = m.group(1).upper()
-    if prefix in _NOT_A_PREFIX:
+    if prefix in not_a_prefix():
         return None
     if len(prefix) < 3 and prefix not in allow_short:
         return None
@@ -257,7 +268,7 @@ def parse_callout(text: str, *, allow_short: frozenset[str] = frozenset()) -> Ca
 #: Deliberately applied to both axes rather than to lines beneath: these
 #: drawings are plotted at whatever rotation suited the sheet, so what reads
 #: as three stacked lines is three spans side by side in PDF coordinates on
-#: Kestrel 8 and three spans stacked on GL 31.  Balloons themselves sit more than
+#: Kestrel 8 and three spans stacked on Bluewater 4.  Balloons themselves sit more than
 #: a hundred points apart, so there is a wide margin either way.
 CALLOUT_GAP = 14.0
 

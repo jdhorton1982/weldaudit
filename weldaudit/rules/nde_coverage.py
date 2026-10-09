@@ -49,7 +49,7 @@ REPRESENTATIVE_SHARE = 0.20
 
 #: Once this fraction of a series is missing from the package the gap is
 #: systemic, and reporting it joint by joint restates one fact hundreds of
-#: times. GL 31's maps balloon AFB-001 to AFB-296 and the book holds reader
+#: times. Bluewater 4's maps balloon AFB-001 to AFB-296 and the book holds reader
 #: sheets to AFB-042: one finding, not one hundred and eighty-seven.
 SERIES_GAP_SHARE = 0.50
 
@@ -782,7 +782,7 @@ def malformed_ticket(db: Database, project_id: int, run_id: str) -> list[Finding
 
     Judged against the project's own numbering rather than a fixed format:
     tickets come in blocks by their first three digits, and within a block
-    every one is the same length. Of 314 read off the Bluewater and PLU sheets,
+    every one is the same length. Of 314 read off the Bluewater and Kestrel sheets,
     310 are eight digits. The exceptions are printed that way on the page —
     `GXR-1P-7 10-27-25.pdf` really does read ``Ticket No: 1860042`` where its
     neighbours read ``18600289`` — so this is the crew dropping a digit, not
@@ -1222,7 +1222,7 @@ def sheet_welder_mismatch(db: Database, project_id: int, run_id: str) -> list[Fi
     break: whichever is wrong, the weld cannot be tied to a qualified welder.
 
     **Scoped to a segment**, because an NDE prefix is reused with independent
-    numbering on each line. PLU files seven different welds called `AFB-001P`,
+    numbering on each line. Kestrel files seven different welds called `AFB-001P`,
     one per segment, welded by five different people; matching them on the
     identifier alone cross-joins all seven sheets against all seven welds and
     calls forty-two of the forty-nine pairs a disagreement. That is 507
@@ -1231,7 +1231,7 @@ def sheet_welder_mismatch(db: Database, project_id: int, run_id: str) -> list[Fi
     **Compared per weld rather than per pair.** A weld may have several sheets
     and the register several rows, and a joint welded by two people is normally
     written up with both. Comparing the union of what the sheets say against
-    the union of what the reports say is what makes `AFB-008` on GL 31 quiet:
+    the union of what the reports say is what makes `AFB-008` on Bluewater 4 quiet:
     one sheet names AM53, another EM93, and the register names both.
     """
     from ..welders import parse_field

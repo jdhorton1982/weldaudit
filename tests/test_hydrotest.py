@@ -76,7 +76,7 @@ def record(**over):
         "result": "ACCEPTABLE", "deadweight_sn": "1715013650",
         "pressure_recorder_sn": "242E-5824A", "temp_recorder_sn": "242E-5824C",
         "contractor_representative": "Travis Whitehurst",
-        "inspector": "Shawn Aguirre", "instrument_sn": None,
+        "inspector": "Dale Thorn", "instrument_sn": None,
         "calibration_date": None, "readings": ramp_and_hold(),
     }
     payload.update(over)
@@ -107,7 +107,7 @@ def only_test(db, pid):
 # -- classification ---------------------------------------------------------
 
 def test_a_map_filed_in_the_hydro_folder_is_still_a_map():
-    # GL 31 keeps its heat and weld maps under HYDRO TEST DOCUMENTS. The
+    # Bluewater 4 keeps its heat and weld maps under HYDRO TEST DOCUMENTS. The
     # filename says what a document is; the folder says where it was put.
     assert kind_for(r"x\HYDRO TEST DOCUMENTS\WELLS MAPS WELD.pdf") == "weld_map"
     assert kind_for(r"x\HYDRO TEST DOCUMENTS\WELLS MAPS Heat.pdf") == "weld_map"
@@ -127,7 +127,7 @@ def test_misfiled_certificates_are_not_sent_to_the_vision_model(db, monkeypatch)
     # Which is where a heuristic is affordable: guessing wrong only skips a
     # page rather than mislabelling a document. Bluewater's real packages do not
     # say "hydro" in the filename at all, so length is what separates them
-    # from GL 31's one-page fitting certificates.
+    # from Bluewater 4's one-page fitting certificates.
     database, pid = db
     pages = {"014378 6in 45.pdf": 1, "454M06.pdf": 1, "11-16-25 6IN FG A PAD .pdf": 16,
              "Seg D Hydro-Test.pdf": 14,
@@ -412,7 +412,7 @@ def test_a_welded_segment_with_no_test_is_reported(db):
 
 
 def test_a_partly_read_package_claims_nothing(db):
-    # PLU files twelve packages of 14 to 37 pages, and the record can be
+    # Kestrel files twelve packages of 14 to 37 pages, and the record can be
     # anywhere in one. Seeding a single page made six segments look untested.
     database, pid = db
     database.ocr_put("fp1:hydrotest:2000", 3, "test-model", record())

@@ -78,7 +78,7 @@ def test_descriptive_filename():
 def test_underscore_delimited_filename_with_requal():
     # Underscores are word characters, so \b-anchored patterns miss both the
     # date and the REQUAL marker here.
-    cert = parse_cert_filename("Craig Lunsford_XTO-SS_050224_ADL_REQUAL.pdf", KNOWN)
+    cert = parse_cert_filename("Craig Lunsford_ACME-SS_050224_ADL_REQUAL.pdf", KNOWN)
     assert cert.stencil == "ADL"
     assert cert.cert_date == "2024-05-02"
     assert cert.requalification is True
@@ -87,13 +87,13 @@ def test_underscore_delimited_filename_with_requal():
 def test_a_surname_is_not_read_as_a_stencil():
     # "Babb" is shaped exactly like a stencil; only the stencils the weld
     # reports actually use are accepted.
-    cert = parse_cert_filename("Kody Babb XTO-SS-SEC IX_020223.pdf", KNOWN)
+    cert = parse_cert_filename("Kody Babb ACME-SS-SEC IX_020223.pdf", KNOWN)
     assert cert.stencil == ""
     assert cert.name == "Kody Babb"
 
 
 def test_expiry_is_read_when_present():
-    cert = parse_cert_filename("Juan Rodriguez IIAFS Certs..Exp.10.22.26.pdf", KNOWN)
+    cert = parse_cert_filename("Marco Silva NFI Certs..Exp.10.22.26.pdf", KNOWN)
     assert cert.expiry == "2026-10-22"
 
 

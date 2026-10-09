@@ -69,7 +69,7 @@ def test_repair_shot_alongside_range():
     assert got == ["FXR-089", "FXR-090", "FXR-090R"]
 
 
-# -- spelt-out convention (GL 31) -------------------------------------------
+# -- spelt-out convention (Bluewater 4) -------------------------------------------
 
 def test_to_range_with_repeated_prefix():
     assert ids("AXR-03 to AXR-15") == [f"AXR-{n:03d}" for n in range(3, 16)]

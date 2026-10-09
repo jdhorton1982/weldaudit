@@ -138,7 +138,7 @@ def extract_text(db: Database, project_id: int) -> tuple[int, int]:
     """Read shots out of the sheets' own text layer.
 
     Necessary because the filename convention is not universal. Kestrel 8 names
-    its sheets for the day rather than the welds — `DTD22 NDE 5.28.25 FG
+    its sheets for the day rather than the welds — `KST8 NDE 5.28.25 FG
     SEG.A RT RIG.A.pdf` — so the filename pass finds nothing in any of its
     sixty-five, and every NDE rule on that job stays dark.
 

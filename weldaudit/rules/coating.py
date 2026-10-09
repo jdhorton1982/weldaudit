@@ -573,7 +573,7 @@ def epoxy_too_cold(db: Database, project_id: int, run_id: str) -> list[Finding]:
             "message": (
                 f"{_sentence(_label(report))} records {product} applied with "
                 f"the steel at {lowest:g}°F. No epoxy may be applied below "
-                f"{MIN_EPOXY_TEMP_F:g}°F without prior XTO approval and the "
+                f"{MIN_EPOXY_TEMP_F:g}°F without prior ACME approval and the "
                 f"manufacturer's advice on preheating."
             ),
             "detail": _detail(product=product, lowest_steel_temp=lowest),

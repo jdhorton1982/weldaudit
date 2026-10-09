@@ -285,7 +285,7 @@ def tech_without_cert_document(db: Database, project_id: int, run_id: str) -> li
                 continue
             seen.add(name.upper())
             # Match on surname, which survives the spelling drift between the
-            # rig log and the certificate ("CAMBELL" vs "CAMPBELL" both appear).
+            # rig log and the certificate ("LINDQVIS" vs "LINDQVIST" both appear).
             parts = [p for p in re.split(r"[^A-Z]+", name.upper()) if len(p) > 2]
             if not parts:
                 continue
@@ -319,10 +319,10 @@ def sheet_technician_mismatch(db: Database, project_id: int, run_id: str) -> lis
     attributed to the wrong crew, and neither can be left unresolved.
 
     Surname matching, because the rig logs spell names inconsistently
-    (``CAMBELL`` and ``CAMPBELL`` both appear for the same person).
+    (``LINDQVIS`` and ``LINDQVIST`` both appear for the same person).
 
     Any evidence will do. This was written when only a vision pass could read a
-    name off a sheet and was restricted to that, but the IIA forms carry the
+    name off a sheet and was restricted to that, but the NFI forms carry the
     technician in their text layer and 1,929 shots now have one without a model
     being involved. Who signed the sheet is ground truth whoever transcribed
     it, so the restriction only kept the check asleep.
@@ -380,20 +380,20 @@ def _same_person(a: str, b: str) -> bool:
     if not tokens_a or not tokens_b:
         return True          # nothing to compare - do not manufacture a finding
 
-    # One shared name is not one person. A crew carrying two Juans - Juan
-    # Rodriguez on rig A and Marco Reyes on rig B - shares the token JUAN, and
+    # One shared name is not one person. A crew carrying two Juans - Marco
+    # Silva on rig A and Marco Reyes on rig B - shares the token MARCO, and
     # taking that as proof merged them into one technician with two
     # certification dates. The rig log was then reported as contradicting
     # itself about a man who does not exist.
     #
     # So where both sides give a full name, both parts have to answer; where
     # one side gives only a surname, that surname is all there is to ask for.
-    # A keystroke is still forgiven per pair: CAMBELL against CAMPBELL.
+    # A keystroke is still forgiven per pair: LINDQVIS against LINDQVIST.
     def close(x: str, y: str) -> bool:
         if x == y:
             return True
         # A longer name can absorb a second slip and still be the same name:
-        # CARNEY against CARNIE. A short one cannot - at five characters two
+        # MARSH against MARSHE. A short one cannot - at five characters two
         # differences is a different name.
         allowed = 2 if min(len(x), len(y)) >= 6 else 1
         return DamerauLevenshtein.distance(x, y, score_cutoff=allowed) <= allowed
@@ -432,7 +432,7 @@ def conflicting_cert_date(db: Database, project_id: int, run_id: str) -> list[Fi
 
     This matters because NDT-04 reads that date to decide whether a shot was
     taken on a lapsed ticket, and the recertification interval is three years.
-    Jimmy Hanks is recorded as certified on 2024-12-30 in six books, 2025-12-30
+    Felix Dunmore is recorded as certified on 2024-12-30 in six books, 2025-12-30
     in four and 2025-08-18 in one; whichever is true, ten of those entries are
     wrong, and a check that silently picks one of them is not a check.
 

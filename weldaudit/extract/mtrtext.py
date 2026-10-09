@@ -46,7 +46,7 @@ PROMINENT = 0.80
 #: company, by ``Aml.nearest`` rather than ``Aml.match`` — the latter's
 #: leading-word-prefix rule is far too generous for choosing between lines on
 #: a page. Measured on the real corpus: the false matches this rejected scored
-#: 19 ("MEGAPAD TAKEAWAY" against "MEGA") and 69 ("Component" against "Forged
+#: 19 ("MAINPAD TAKEAWAY" against "MEGA") and 69 ("Component" against "Forged
 #: Components Inc"), while every genuine letterhead scored 100.
 AML_CERTAIN = 92
 

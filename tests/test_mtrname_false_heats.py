@@ -6,7 +6,7 @@ then reports itself as a gap for somebody to go and read — sending an auditor
 to open a bill of lading in search of a heat number that was never there.
 
 Measured on one real job: 17 of 159 certificates were filed under a heat that
-was actually a date, an XTO tag, a catalogue figure or a valve model code.
+was actually a date, an ACME tag, a catalogue figure or a valve model code.
 """
 
 import sys
@@ -41,27 +41,27 @@ def test_a_delivery_date_is_not_a_heat(name):
 # -- internal tags and catalogue numbers -------------------------------------
 
 @pytest.mark.parametrize("name", [
-    "2IN 150 CGI FLEX GASKET XTO-421.pdf",
-    "4IN 150 CGI FLEX GASKET XTO-464.pdf",
-    "6IN 150 CGI FLEX GASKET XTO-484.pdf",
+    "2IN 150 CGI FLEX GASKET ACME-421.pdf",
+    "4IN 150 CGI FLEX GASKET ACME-464.pdf",
+    "6IN 150 CGI FLEX GASKET ACME-484.pdf",
 ])
-def test_an_xto_tag_is_not_a_heat(name):
+def test_an_operator_tag_is_not_a_heat(name):
     """The tag and its number are one thing. Split apart, the number stood
     alone at the end of the name where the trailing-heat rule adopted it."""
     assert parse(name).heat == ""
 
 
 def test_a_catalogue_figure_is_not_a_heat():
-    assert parse("F-AE 2IN 600 YARROW CAP FIG 500 F-AF HUB XH .5IN TAP XTO-946.pdf").heat == ""
+    assert parse("F-AE 2IN 600 YARROW CAP FIG 500 F-AF HUB XH .5IN TAP ACME-946.pdf").heat == ""
 
 
 @pytest.mark.parametrize("name", [
     "8F-T63SN-RF.pdf",
     "2F-F63N-RF BAYLOR 2IN 600 FP BV.pdf",
     "1F-F03N-SE 1IN BAYLOR BV THRD 3000.pdf",
-    "5F-F03N-SE BAYLOR 3000 THRD BALL VALVE XTO-1276 (1).pdf",
-    "6F-F13N-RF15.5 6IN 150 BAYLOR BV FP LONG PATTERN XTO-358.pdf",
-    "2F-F13N-RF 2IN 150 FP BAYLOR BV XTO-408.pdf",
+    "5F-F03N-SE BAYLOR 3000 THRD BALL VALVE ACME-1276 (1).pdf",
+    "6F-F13N-RF15.5 6IN 150 BAYLOR BV FP LONG PATTERN ACME-358.pdf",
+    "2F-F13N-RF 2IN 150 FP BAYLOR BV ACME-408.pdf",
 ])
 def test_a_valve_model_code_is_not_a_heat(name):
     """Size, maker's figure, facing — and every piece of it in turn looks
@@ -106,7 +106,7 @@ def test_the_ht_in_a_description_is_not_a_label():
 # -- nothing that worked before may stop working -----------------------------
 
 @pytest.mark.parametrize("name,expect", [
-    ("071B33 - 16IN 150 RFWN FLANGE STD A105N XTO-414.pdf", "071B33"),
+    ("071B33 - 16IN 150 RFWN FLANGE STD A105N ACME-414.pdf", "071B33"),
     ("377314022-003 ~ 16IN 150 TRUNNION BV CS NACE.pdf", "377314022-003"),
     ("4F214-FLG-WN-2IN-CL600-SCH160-A105N.pdf", "4F214"),
     ("FLANGE 3 INCH SCH 80- 4F318P.pdf", "4F318P"),
@@ -167,8 +167,8 @@ def test_no_pattern_holds_a_control_character():
 # a dash, the filename separates it from the description with a TILDE rather
 # than a dash:
 #
-#     A11484-24 ~ 4IN 300 RFWN FLANGE XH CS A105N XTO-1233.pdf
-#     BV70494-1011 ~ 2IN 300 RF BALL VALVE SS XTO-1444.pdf
+#     A11484-24 ~ 4IN 300 RFWN FLANGE XH CS A105N ACME-1233.pdf
+#     BV70494-1011 ~ 2IN 300 RF BALL VALVE SS ACME-1444.pdf
 #
 # 36 filenames across two jobs do this. The tilde is the clearest statement a
 # filename can make about where the heat ends, and it was being ignored: the
@@ -182,27 +182,27 @@ def test_no_pattern_holds_a_control_character():
 
 
 def test_a_tilde_separator_is_taken_at_its_word():
-    assert parse("A11484-24 ~ 4IN 300 RFWN FLANGE XH CS A105N XTO-1233.pdf").heats \
+    assert parse("A11484-24 ~ 4IN 300 RFWN FLANGE XH CS A105N ACME-1233.pdf").heats \
         == ["A11484-24"]
 
 
 def test_two_heats_that_differ_only_after_the_dash_stay_apart():
     """They were both read as "4598" — one certificate covering two heats,
     and the other appearing never to have been filed."""
-    a = parse("4598-08-02 ~ 8IN 300 SWING CHECK VALVE SS XTO-281.pdf").heats
-    b = parse("4598-08-05 ~ 8IN 300 SWING CHECK VALVE SS XTO-284.pdf").heats
+    a = parse("4598-08-02 ~ 8IN 300 SWING CHECK VALVE SS ACME-281.pdf").heats
+    b = parse("4598-08-05 ~ 8IN 300 SWING CHECK VALVE SS ACME-284.pdf").heats
     assert a == ["4598-08-02"]
     assert b == ["4598-08-05"]
     assert a != b
 
 
 @pytest.mark.parametrize("filename,heat", [
-    ("14003859-11 ~ 16IN 300 DELVAL BFV SS XTO-168.pdf", "14003859-11"),
-    ("14006282-01 ~ 16 300 BFV SS XTO-250.pdf", "14006282-01"),
-    ("BV70494-1011 ~ 2IN 300 RF BALL VALVE SS XTO-1444.pdf", "BV70494-1011"),
-    ("EK-4109 ~ 8IN PIPE S40 316L SS XTO-295.pdf", "EK-4109"),
-    ("SR95772-2-1819-EP ~ 2IN 600 RF FP BV XTO-1308.pdf", "SR95772-2-1819-EP"),
-    ("Y230907A20-6 ~ 8IN PIPE SCH40 SS 316L XTO-253.PDF", "Y230907A20-6"),
+    ("14003859-11 ~ 16IN 300 DELVAL BFV SS ACME-168.pdf", "14003859-11"),
+    ("14006282-01 ~ 16 300 BFV SS ACME-250.pdf", "14006282-01"),
+    ("BV70494-1011 ~ 2IN 300 RF BALL VALVE SS ACME-1444.pdf", "BV70494-1011"),
+    ("EK-4109 ~ 8IN PIPE S40 316L SS ACME-295.pdf", "EK-4109"),
+    ("SR95772-2-1819-EP ~ 2IN 600 RF FP BV ACME-1308.pdf", "SR95772-2-1819-EP"),
+    ("Y230907A20-6 ~ 8IN PIPE SCH40 SS 316L ACME-253.PDF", "Y230907A20-6"),
 ])
 def test_real_tilde_filenames_keep_the_whole_heat(filename, heat):
     assert parse(filename).heats == [heat]
@@ -216,9 +216,9 @@ def test_a_dash_separator_still_has_its_description_trimmed():
 
 
 def test_an_ordinary_dash_separated_name_is_unaffected():
-    assert parse("EA6906 - 6IN STD CS PIPE A106 XTO-369.pdf").heats == ["EA6906"]
+    assert parse("EA6906 - 6IN STD CS PIPE A106 ACME-369.pdf").heats == ["EA6906"]
 
 
 def test_a_dashed_heat_with_no_separator_at_all_is_still_kept_whole():
     """No separator to read, so the token stands as it is."""
-    assert parse("86189-2 4IN 300 XS RFWN XTO-1261.PDF").heats == ["86189-2"]
+    assert parse("86189-2 4IN 300 XS RFWN ACME-1261.PDF").heats == ["86189-2"]

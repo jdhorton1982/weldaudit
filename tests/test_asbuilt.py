@@ -320,7 +320,7 @@ def test_an_unknown_report_is_reported(db):
 
 
 def test_a_job_with_no_parsed_reader_sheets_makes_no_claim(db):
-    # PLU files 65 reader sheets and none yields an id the filename grammar
+    # Kestrel files 65 reader sheets and none yields an id the filename grammar
     # recognises. Without this guard every X-ray on its as-built reads as
     # unfiled — a finding about the NDE package wearing the as-built's name.
     database, pid = db

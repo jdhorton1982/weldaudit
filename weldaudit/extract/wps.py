@@ -1,6 +1,6 @@
 """Reading the approved welding procedure register out of the job's standard.
 
-XTO's welding procedures standard, GPPB-0110, is not a policy document with a
+ACME's welding procedures standard, GPPB-0110, is not a policy document with a
 list of procedure names in it — it *contains* the procedures, one API 1104
 specification per two pages, each stating its number, its supporting PQR and
 its essential variables.  Extracting them turns "which procedures may be used

@@ -199,7 +199,7 @@ def kind_for(path: str) -> str:
     """The document kind, used to pick an extractor.
 
     The filename beats the folder it is filed under.  Contractors file whole
-    document sets inside one section folder — GL 31 keeps its pipe
+    document sets inside one section folder — Bluewater 4 keeps its pipe
     certificates and its heat maps under ``HYDRO TEST DOCUMENTS`` — and the
     containing folder says where a document was put, while its own name says
     what it is.

@@ -32,7 +32,7 @@ from ..mtrname import parse as parse_mtr_name
 MATERIAL_FOLDER = re.compile(r"\bmtrs?\b|fittings|valve documents|(^|[\\/])pipe( lp)?([\\/]|$)",
                              re.IGNORECASE)
 
-#: Folders that hold certificates alongside everything else.  GL 31 keeps 114
+#: Folders that hold certificates alongside everything else.  Bluewater 4 keeps 114
 #: pipe and fitting certificates under HYDRO TEST DOCUMENTS, and until the
 #: heat maps were read nothing asked whether those heats were certified — so
 #: the gap sat there invisibly.  A document here is only taken when its
@@ -60,7 +60,7 @@ def _is_certificate(path: str, filename: str, installed: set[str]) -> bool:
     """Whether a document is a mill certificate, wherever it is filed.
 
     In a mixed folder the filename alone is not enough — `454M06.pdf` and
-    `DI31-WELD LOG BLOWDOWN PDF.pdf` are equally terse — so the heat has to be
+    `Bluewater 7-WELD LOG BLOWDOWN PDF.pdf` are equally terse — so the heat has to be
     corroborated: either the name also describes a material item, or the heat
     is one the maps say was actually installed on this job. That keeps the
     heuristic from inventing material rows for whatever else is in the folder,

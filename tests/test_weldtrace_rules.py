@@ -39,7 +39,7 @@ WELD_DEFAULTS = {
     "Test Pack # - Rev": "TP-1-1", "Test Pack Reference": PACK_REF,
     "Weld Number": "FW-104", "Drawing # - Revision": "2-D1-0-GL-4012-1-0",
     "Line Number": "6-B1-0V-PF-4112", "Category": "Field", "Joint Type": "BW",
-    "WPs# - Revision": "XTO-ASME-P1-HYP-NACE-0", "Welder ID Root": "AOO;",
+    "WPs# - Revision": "ACME-ASME-P1-HYP-NACE-0", "Welder ID Root": "AOO;",
     "Welder ID Fill": "AOO;", "Welder ID Cap": "AOO;",
     "Date Planned": "Aug-21-2026", "Date Welded": "Aug-21-2026",
     "Material1": "PIPE", "Material 1 - Heat Number": "70097",
@@ -126,7 +126,7 @@ def test_a_download_fills_the_shared_weld_table(download):
                  (pid,))
     assert len(welds) == 1
     assert welds[0]["weld_no"] == "FW-104"
-    assert welds[0]["wps"] == "XTO-ASME-P1-HYP-NACE"
+    assert welds[0]["wps"] == "ACME-ASME-P1-HYP-NACE"
     assert welds[0]["wps_revision"] == "0"
 
 

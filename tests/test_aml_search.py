@@ -50,7 +50,7 @@ def aml():
         entry("Halden Steelworks", limits="Up to NPS 20", max_nps=20.0),
         entry("Bonney Forge", category="2.0 Pipe Fittings",
               location="Mount Union, PA, USA"),
-        entry("Balon Corp", category="7.0 Valves - Ball",
+        entry("Varex Corp", category="7.0 Valves - Ball",
               limits="Up to NPS 12", max_nps=12.0),
     ])
 
@@ -107,12 +107,12 @@ def test_a_substring_search_finds_what_the_matcher_did_not(aml):
 
 def test_a_search_matches_the_limits_text_too(aml):
     assert {r["manufacturer"] for r in search(aml, "Up to NPS")["rows"]} \
-        == {"Halden Steelworks", "Balon Corp"}
+        == {"Halden Steelworks", "Varex Corp"}
 
 
 def test_a_category_narrows_the_rows(aml):
     out = search(aml, "", category="7.0 Valves - Ball")
-    assert [r["manufacturer"] for r in out["rows"]] == ["Balon Corp"]
+    assert [r["manufacturer"] for r in out["rows"]] == ["Varex Corp"]
 
 
 def test_categories_are_listed_in_the_lists_own_order(aml):
@@ -161,7 +161,7 @@ def test_an_entry_with_no_size_limit_is_never_marked(aml):
 
 
 def test_a_fraction_is_understood(aml):
-    assert search(aml, "Balon", nps='1/2')["rows"][0]["size"] == "allows"
+    assert search(aml, "Varex", nps='1/2')["rows"][0]["size"] == "allows"
 
 
 def test_no_size_given_marks_nothing(aml):

@@ -1,10 +1,10 @@
 """Welding procedure specifications: identifying them, and reading the register.
 
 A WPS reference is written differently everywhere it appears.  The weld log
-exports say ``XTO-X60-6010/8010 Rev.1``; a certificate filename cannot contain
-a slash so it says ``XTO-X60-6010-8010 Rev.1``; and one job's log says
-``XTO-ASME PI HYP NACE Rev.0`` where the certificate says
-``XTO-ASME-P1-HYP-NACE`` — a letter I for the digit 1 in an ASME P-number.
+exports say ``ACME-X60-6010/8010 Rev.1``; a certificate filename cannot contain
+a slash so it says ``ACME-X60-6010-8010 Rev.1``; and one job's log says
+``ACME-ASME PI HYP NACE Rev.0`` where the certificate says
+``ACME-ASME-P1-HYP-NACE`` — a letter I for the digit 1 in an ASME P-number.
 
 Two ideas keep that manageable.  The **base** and the **revision** are split
 apart, because "is this the same procedure" and "was it the right revision"
@@ -15,7 +15,7 @@ as a near miss rather than by inventing more normalisation rules, the same way
 welder stencils and instrument serials are.
 
 The other half of this module reads the **approved procedure register**.
-XTO's welding procedures standard, GPPB-0110, carries the procedures
+ACME's welding procedures standard, GPPB-0110, carries the procedures
 themselves — eight of them across sixty-five pages, each stating its number,
 its supporting PQR and its essential variables.  That makes the list of valid
 procedures something the corpus supplies rather than something this tool
@@ -33,7 +33,7 @@ _REVISION = re.compile(r"\s*\bREV(?:ISION)?\.?\s*([0-9]+[A-Z]?)\s*$", re.IGNOREC
 
 
 def split_revision(text: str | None) -> tuple[str, str]:
-    """``('XTO-X60-6010/8010', '1')`` from ``'XTO-X60-6010/8010 Rev. 1'``.
+    """``('ACME-X60-6010/8010', '1')`` from ``'ACME-X60-6010/8010 Rev. 1'``.
 
     A reference with no revision returns an empty one rather than a guess:
     the certificates routinely omit it, and treating "unstated" as revision 0
@@ -48,7 +48,7 @@ def split_revision(text: str | None) -> tuple[str, str]:
 def base_key(text: str | None) -> str:
     """Punctuation-free key for the procedure, revision removed.
 
-    Resolves ``XTO-X60-6010/8010`` against ``XTO-X60-6010-8010`` exactly.
+    Resolves ``ACME-X60-6010/8010`` against ``ACME-X60-6010-8010`` exactly.
     """
     base, _revision = split_revision(text)
     return re.sub(r"[^A-Z0-9]", "", base.upper())
@@ -65,11 +65,11 @@ def resolve(text: str, known: set[str]) -> tuple[str, str]:
     """Match a reference to a known procedure: ``(key, how)``.
 
     Three ways, in descending confidence.  Exact on the punctuation-free base.
-    Then an unambiguous abbreviation — a certificate saying ``XTO-SS`` for the
-    register's ``XTO-SS-Sec. IX`` — accepted only when exactly one known
+    Then an unambiguous abbreviation — a certificate saying ``ACME-SS`` for the
+    register's ``ACME-SS-Sec. IX`` — accepted only when exactly one known
     procedure extends it.  That last condition is the whole safety of it:
-    ``XTO-X42-6010`` also prefixes ``XTO-X42-6010/7018`` and
-    ``XTO-X42-6010/8010``, which are three genuinely different procedures, and
+    ``ACME-X42-6010`` also prefixes ``ACME-X42-6010/7018`` and
+    ``ACME-X42-6010/8010``, which are three genuinely different procedures, and
     a prefix match there would merge them.  Then a single-character near miss.
     """
     key = base_key(text)
@@ -89,7 +89,7 @@ def resolve(text: str, known: set[str]) -> tuple[str, str]:
 def nearest_procedures(text: str, known: set[str]) -> list[str]:
     """Procedure keys within one edit of this one.
 
-    `XTOASMEPIHYPNACE` against `XTOASMEP1HYPNACE` is a single substitution —
+    `ACMEASMEPIHYPNACE` against `ACMEASMEP1HYPNACE` is a single substitution —
     an I typed for a 1 in an ASME P-number. Reporting that as an unknown
     procedure would send an auditor looking for a document that does exist.
     """
@@ -133,9 +133,9 @@ class Procedure:
 
 
 _WPS_NO = re.compile(r"WPS\s*(?:NO|NUMBER)\.?\s*:?\s*([A-Z0-9][A-Z0-9\-/. ]{4,40}?)"
-                     r"(?=\s+SUPPORTING|\s+API|\s+XTO Energy|\s{2,}|$)", re.IGNORECASE)
+                     r"(?=\s+SUPPORTING|\s+API|\s+ACME Energy|\s{2,}|$)", re.IGNORECASE)
 _PQR = re.compile(r"SUPPORTING\s+PQR\s*:?\s*([A-Z0-9][A-Z0-9\-/&. ]{4,60}?)"
-                  r"(?=\s+API\b|\s+XTO Energy|\s+WPS\b|\s{2,}|$)", re.IGNORECASE)
+                  r"(?=\s+API\b|\s+ACME Energy|\s+WPS\b|\s{2,}|$)", re.IGNORECASE)
 _CODE = re.compile(
     r"QUALIFIED\s+TO\s*:?\s*(API\s*1104|ASME\s*(?:B31\.\d+|SEC(?:TION)?\.?\s*[IVX]+))",
     re.IGNORECASE,

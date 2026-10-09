@@ -5,7 +5,7 @@ and ASME IX each have their own tables for diameter groups, thickness limits,
 position coverage and filler-metal groupings, and getting one wrong would
 produce confident, wrong findings about people's tickets.
 
-This module does not derive them.  XTO's own Welder Performance Qualification
+This module does not derive them.  ACME's own Welder Performance Qualification
 form carries a **Qualification Ranges** block that the certifying CWI filled in
 at test time — process, position, progression, pipe diameter, P/S numbers, F
 number.  That is an authoritative statement by a qualified person, and it is
@@ -196,8 +196,8 @@ def positions_covered(tested: str | None) -> set[str]:
 def normalise_wps(text: str | None) -> str:
     """Canonical form of a WPS reference, for joining across sources.
 
-    The same procedure is written ``XTO-X60-6010/8010 Rev.1`` on a weld log and
-    ``XTO-X60-6010-8010 Rev.1`` in a certificate filename, because a slash is
+    The same procedure is written ``ACME-X60-6010/8010 Rev.1`` on a weld log and
+    ``ACME-X60-6010-8010 Rev.1`` in a certificate filename, because a slash is
     not legal in a filename.
     """
     text = (text or "").upper()

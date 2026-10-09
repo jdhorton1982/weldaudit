@@ -178,7 +178,7 @@ def db(tmp_path):
         c.execute(
             """INSERT INTO nde_tech(project_id, segment, company, name, rig_letter,
                                     certs, acuity, cert_date, arrived)
-               VALUES(?, 'SEG A', 'IIA', 'JOHN DAVID "JD" WILLIAMS', 'G', 'Y', 'Y',
+               VALUES(?, 'SEG A', 'NFI', 'JOHN DAVID "JD" WILLIAMS', 'G', 'Y', 'Y',
                       '2022-11-03', '2025-08-09')""",
             (pid,),
         )
@@ -227,7 +227,7 @@ def test_the_printed_date_is_kept(db):
 
 
 def test_the_filename_date_is_the_fallback(db):
-    # PLU names its sheets for the day, so even a blank scan has a date.
+    # Kestrel names its sheets for the day, so even a blank scan has a date.
     database, pid = db
     reader = StubReader([{
         "page_is_reader_sheet": True, "technician": "JD WILLIAMS",
@@ -236,7 +236,7 @@ def test_the_filename_date_is_the_fallback(db):
                   "wall_thickness": None, "welder_stencil": None,
                   "indications": None, "remarks": None}],
     }])
-    target = Target(1, "x.pdf", "DTD22 NDE 5.29.25 FG SEG.C RT RIG.A.pdf",
+    target = Target(1, "x.pdf", "KST8 NDE 5.29.25 FG SEG.C RT RIG.A.pdf",
                     "fp1", 1, "test", "SEG A")
     run(database, pid, "reader_sheet", reader, [target])
     shot = database.one(
@@ -264,7 +264,7 @@ def test_a_reject_on_one_area_rejects_the_weld(db):
     # the last one written wins — and the last one here says accepted.
     database, pid = db
     reader = StubReader([{
-        "page_is_reader_sheet": True, "technician": "JIMMY HANKS",
+        "page_is_reader_sheet": True, "technician": "FELIX DUNMORE",
         "sheet_date": "Aug 11, 2025", "weld_count": 1,
         "rows": [_area("GFB-37", "0-A", "ACC"),
                  _area("GFB-37", "A-B", "REJ", indications="ESI",
@@ -280,7 +280,7 @@ def test_a_reject_on_one_area_rejects_the_weld(db):
 def test_the_three_areas_are_one_shot_not_three(db):
     database, pid = db
     reader = StubReader([{
-        "page_is_reader_sheet": True, "technician": "JIMMY HANKS",
+        "page_is_reader_sheet": True, "technician": "FELIX DUNMORE",
         "rows": [_area("GFB-37", a, "ACC") for a in ("0-A", "A-B", "B-0")],
     }])
     result = run(database, pid, "reader_sheet", reader, [_target()])
@@ -294,7 +294,7 @@ def test_an_area_with_no_verdict_does_not_erase_one(db):
     # Continuation sub-rows often carry an area and nothing else.
     database, pid = db
     reader = StubReader([{
-        "page_is_reader_sheet": True, "technician": "JIMMY HANKS",
+        "page_is_reader_sheet": True, "technician": "FELIX DUNMORE",
         "rows": [_area("GFB-37", "0-A", "ACC"),
                  _area("GFB-37", "A-B", None)],
     }])
@@ -307,7 +307,7 @@ def test_an_area_with_no_verdict_does_not_erase_one(db):
 def test_the_sheets_own_weld_count_is_kept(db):
     database, pid = db
     reader = StubReader([{
-        "page_is_reader_sheet": True, "technician": "JIMMY HANKS",
+        "page_is_reader_sheet": True, "technician": "FELIX DUNMORE",
         "weld_count": 8,
         "rows": [_area("GFB-37", None, "ACC")],
     }])
@@ -330,7 +330,7 @@ def test_a_read_count_replaces_the_one_ocr_guessed(db):
             (pid,),
         )
     reader = StubReader([{
-        "page_is_reader_sheet": True, "technician": "JIMMY HANKS",
+        "page_is_reader_sheet": True, "technician": "FELIX DUNMORE",
         "weld_count": 8, "rows": [_area("GFB-37", None, "ACC")],
     }])
     run(database, pid, "reader_sheet", reader, [_target()])
@@ -429,7 +429,7 @@ def test_technician_name_spelling_drift_is_tolerated(db):
 def test_a_different_technician_than_the_rig_log_is_flagged(db):
     database, pid = db
     reader = StubReader([{
-        "page_is_reader_sheet": True, "technician": "BREYDON BURKETT",
+        "page_is_reader_sheet": True, "technician": "MAREK FERREIRA",
         "rows": [{"weld_id": "GFB-37", "result": "ACC", "pipe_diameter": None,
                   "wall_thickness": None, "welder_stencil": None,
                   "indications": None, "remarks": None}],
@@ -438,7 +438,7 @@ def test_a_different_technician_than_the_rig_log_is_flagged(db):
 
     findings = ndetech.sheet_technician_mismatch(database, pid, "r1")
     assert len(findings) == 1
-    assert "BREYDON BURKETT" in findings[0]["message"]
+    assert "MAREK FERREIRA" in findings[0]["message"]
 
 
 def test_a_page_that_is_not_a_reader_sheet_writes_nothing(db):

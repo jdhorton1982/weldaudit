@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS weld (
     position      TEXT,
     wps           TEXT,
     -- The revision of that procedure, where the register states one. A
-    -- WeldTrace export fuses the two into `XTO-ASME-P1-HYP-NACE-0`; split
+    -- WeldTrace export fuses the two into `ACME-ASME-P1-HYP-NACE-0`; split
     -- here rather than left fused in `wps`, so a weld still resolves against
     -- the same filed procedure as a certificate that omits the revision.
     -- Blank means the record did not say, which is not the same as revision 0.
@@ -566,7 +566,7 @@ CREATE TABLE IF NOT EXISTS procedure (
     id          INTEGER PRIMARY KEY,
     project_id  INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE,
     document_id INTEGER REFERENCES document(id),
-    wps         TEXT,              -- as written, e.g. 'XTO-X60-6010/8010'
+    wps         TEXT,              -- as written, e.g. 'ACME-X60-6010/8010'
     wps_key     TEXT,              -- punctuation-free, revision removed
     revision    TEXT,
     pqr         TEXT,              -- the supporting qualification record
@@ -588,7 +588,7 @@ CREATE TABLE IF NOT EXISTS riser (
     project_id  INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE,
     document_id INTEGER REFERENCES document(id),
     segment     TEXT,
-    description TEXT,             -- "FG SEG B TO BFFR PAD PLU-22"
+    description TEXT,             -- "FG SEG B TO BFFR PAD Kestrel 8"
     serial      TEXT,             -- riser serial / package number
     latitude    REAL,
     longitude   REAL,

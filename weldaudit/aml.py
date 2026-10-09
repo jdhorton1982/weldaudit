@@ -415,7 +415,7 @@ class Aml:
         "Norvale Silcotub", so a leading-word prefix scores 95. That generosity
         is wrong when the question is *which line of a page is the
         manufacturer* — there, "MEGA" reaches a shipping address reading
-        "MEGAPAD TAKEAWAY" and "Component" reaches "Forged Components Inc".
+        "MAINPAD TAKEAWAY" and "Component" reaches "Forged Components Inc".
         This is the strict comparison for callers choosing between candidates.
         """
         key = normalise_manufacturer(self._resolve(name))

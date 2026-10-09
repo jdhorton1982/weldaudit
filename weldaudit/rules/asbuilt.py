@@ -136,7 +136,7 @@ def unknown_nde_report(db: Database, project_id: int, run_id: str) -> list[Findi
     filed or a number transcribed wrong onto the permanent record of the line.
     """
     # An X-ray number's counterpart is a reader sheet, so this rule needs the
-    # sheets to have been read. PLU files 65 of them and none yields an id its
+    # sheets to have been read. Kestrel files 65 of them and none yields an id its
     # filename grammar recognises, which would make every X-ray on its
     # as-built look unfiled — a finding about the NDE package wearing the
     # as-built's name.

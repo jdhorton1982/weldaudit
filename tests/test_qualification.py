@@ -88,23 +88,23 @@ def test_all_covers_every_position():
 
 def test_a_slash_and_a_dash_are_the_same_procedure():
     # A slash is illegal in a filename, so the same WPS is written two ways.
-    assert normalise_wps("XTO-X60-6010/8010 Rev.1") == normalise_wps(
-        "XTO-X60-6010-8010 Rev.1")
+    assert normalise_wps("ACME-X60-6010/8010 Rev.1") == normalise_wps(
+        "ACME-X60-6010-8010 Rev.1")
 
 
 def test_different_procedures_stay_different():
-    assert normalise_wps("XTO-ASME-P1-LT-NACE") != normalise_wps("XTO-ASME-P1-HYP-NACE")
+    assert normalise_wps("ACME-ASME-P1-LT-NACE") != normalise_wps("ACME-ASME-P1-HYP-NACE")
 
 
 # -- scoped certificate filenames -------------------------------------------
 
 def test_scoped_filename_yields_stencil_wps_and_date():
     cert = parse_cert_filename(
-        "Javier Vazquez_XTO-X60-6010-8010 Rev.1_042425_ARS.pdf", {"ARS"})
+        "Tomas Vargas_ACME-X60-6010-8010 Rev.1_042425_ARS.pdf", {"ARS"})
     assert cert.stencil == "ARS"
-    assert cert.wps == "XTO-X60-6010-8010 Rev.1"
+    assert cert.wps == "ACME-X60-6010-8010 Rev.1"
     assert cert.cert_date == "2025-04-24"
-    assert cert.name == "Javier Vazquez"
+    assert cert.name == "Tomas Vargas"
 
 
 def test_a_bare_stencil_certificate_has_no_procedure_scope():
@@ -155,19 +155,19 @@ def _cert(db, pid, **kw):
 
 def test_welding_under_an_uncertified_procedure_is_critical(db):
     database, pid = db
-    _cert(database, pid, wps="XTO-ASME-P1-LT-NACE", evidence="filename")
-    _weld(database, pid, wps="XTO-X60-6010/8010 Rev.1")
+    _cert(database, pid, wps="ACME-ASME-P1-LT-NACE", evidence="filename")
+    _weld(database, pid, wps="ACME-X60-6010/8010 Rev.1")
 
     findings = wrules.wps_not_certified(database, pid, "r1")
     assert len(findings) == 1
     assert findings[0]["severity"] == "critical"
-    assert "XTO-X60-6010/8010 Rev.1" in findings[0]["message"]
+    assert "ACME-X60-6010/8010 Rev.1" in findings[0]["message"]
 
 
 def test_the_same_procedure_written_two_ways_is_not_a_finding(db):
     database, pid = db
-    _cert(database, pid, wps="XTO-X60-6010-8010 Rev.1", evidence="filename")
-    _weld(database, pid, wps="XTO-X60-6010/8010 Rev.1")
+    _cert(database, pid, wps="ACME-X60-6010-8010 Rev.1", evidence="filename")
+    _weld(database, pid, wps="ACME-X60-6010/8010 Rev.1")
     assert wrules.wps_not_certified(database, pid, "r1") == []
 
 
@@ -176,7 +176,7 @@ def test_a_welder_with_no_scoped_ticket_is_left_to_wld_01(db):
     # WPS violation from its absence would double-report WLD-01.
     database, pid = db
     _cert(database, pid, wps="", evidence="filename")
-    _weld(database, pid, wps="XTO-X60-6010/8010 Rev.1")
+    _weld(database, pid, wps="ACME-X60-6010/8010 Rev.1")
     assert wrules.wps_not_certified(database, pid, "r1") == []
 
 

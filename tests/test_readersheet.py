@@ -1,7 +1,7 @@
 """Reading an NDE examination report out of its text layer.
 
-The filename convention is not universal. Bluewater and GL 31 name a sheet for
-the welds it covers; Kestrel 8 names it for the day — `DTD22 NDE 5.28.25 FG
+The filename convention is not universal. Bluewater and Bluewater 4 name a sheet for
+the welds it covers; Kestrel 8 names it for the day — `KST8 NDE 5.28.25 FG
 SEG.A RT RIG.A.pdf` — so the filename pass finds nothing in any of its
 sixty-five sheets and every NDE rule on that job stays dark.
 
@@ -12,7 +12,7 @@ identifier on the page is a shot** — the penetrant form lists its consumables
 at the foot, and a batch number like `VP-31A` is shaped exactly like a weld
 id.
 
-The geometry below is the real layout from the IIA Field Services form.
+The geometry below is the real layout from the Northfield Inspection form.
 """
 
 import sys
@@ -43,9 +43,9 @@ HEADER = [
 TOP = [
     w("Ticket", 495, 19), w("No:", 517, 19), w("17200864", 539, 22),
     w("Customer:", 34, 53), w("Date:", 461, 53),
-    w("XTO", 75, 56), w("Energy", 94, 56), w("05/28/2025", 486, 56),
+    w("ACME", 75, 56), w("Energy", 94, 56), w("05/28/2025", 486, 56),
     w("Technician:", 34, 81), w("Level:", 230, 81), w("Assistant:", 366, 81),
-    w("Juan", 75, 85), w("Rodriguez", 95, 85), w("II", 252, 85),
+    w("Marco", 75, 85), w("Silva", 95, 85), w("II", 252, 85),
     w("Gabriel", 399, 85), w("Gonzales", 427, 85),
 ]
 
@@ -77,7 +77,7 @@ def test_header_fields_are_read():
     sheet = parse_page(page(shot("AXR-01P.", 135)))
     assert sheet.ticket == "17200864"
     assert sheet.sheet_date == "05/28/2025"
-    assert sheet.customer == "XTO Energy"
+    assert sheet.customer == "ACME Energy"
 
 
 def test_a_two_word_label_does_not_bound_its_own_value():
@@ -119,17 +119,17 @@ def test_a_label_two_words_long_stops_the_value_before_it():
 
 def test_a_distant_label_does_not_claim_the_word_before_it():
     # ...but "the word before a colon-word" only holds when the two are
-    # adjacent. `Level:` sits ninety points past `Rodriguez` on the same row,
-    # and treating that as one label truncated the technician to "Juan".
+    # adjacent. `Level:` sits ninety points past `Silva` on the same row,
+    # and treating that as one label truncated the technician to "Marco".
     sheet = parse_page(page(shot("AXR-01", 135)))
-    assert sheet.technician == "Juan Rodriguez"
+    assert sheet.technician == "Marco Silva"
 
 
 def test_the_next_label_bounds_the_value():
     # `Technician:` is followed by `Level:`, which is not a field this module
     # collects; without it as a boundary the level lands in the name.
     sheet = parse_page(page(shot("AXR-01", 135)))
-    assert sheet.technician == "Juan Rodriguez"
+    assert sheet.technician == "Marco Silva"
     assert sheet.assistant == "Gabriel Gonzales"
 
 
@@ -158,7 +158,7 @@ def test_a_tick_in_the_reject_column_is_a_reject():
 
 
 def test_no_tick_is_no_result_rather_than_an_accept():
-    # `DTD22 NDE 6.01.25 LP SEG.D RT.pdf` lists eighteen welds and marks
+    # `KST8 NDE 6.01.25 LP SEG.D RT.pdf` lists eighteen welds and marks
     # neither box on any of them. Defaulting to accept would bury that.
     sheet = parse_page(page(shot("AFB-03", 135, tick_x=None)))
     assert sheet.rows[0].result == ""
@@ -211,10 +211,10 @@ def test_one_mention_of_penetrant_is_the_title_not_the_panel():
 
 # -- the penetrant form -----------------------------------------------------
 #
-# IIA issues two forms. The radiographic one is above; this is the liquid
-# penetrant one, at the coordinates `DTD22 NDE 6.01.25 LP SEG.D PT.pdf` uses.
+# NFI issues two forms. The radiographic one is above; this is the liquid
+# penetrant one, at the coordinates `KST8 NDE 6.01.25 LP SEG.D PT.pdf` uses.
 # It labels three columns differently, and its single row carries no tick and
-# no measurement — so the earlier row test emptied it, and two PLU sheets with
+# no measurement — so the earlier row test emptied it, and two Kestrel sheets with
 # a full text layer were counted as blank scans.
 
 PT_HEADER = [
@@ -307,7 +307,7 @@ def test_a_page_without_the_result_columns_is_not_this_form():
 
 
 def test_an_empty_page_yields_nothing():
-    # Nine of PLU's sixty-five sheets are scans with no text at all; those are
+    # Nine of Kestrel's sixty-five sheets are scans with no text at all; those are
     # the vision pass's job, not a parse failure.
     assert parse_page([]).rows == []
     assert parse_page([]).is_report is False
@@ -373,9 +373,9 @@ def test_the_sheet_date_beats_the_filename():
 
 
 @pytest.mark.parametrize("filename", [
-    "DTD22 NDE 5.28.25 FG SEG.A RT RIG.A.pdf",
-    "DTD22 NDE 08.22.25 LP SEG.D PT.pdf",
-    "DTD 22 -4in FG. Seg. D ..RT.XTO.05.31.25.pdf",
+    "KST8 NDE 5.28.25 FG SEG.A RT RIG.A.pdf",
+    "KST8 NDE 08.22.25 LP SEG.D PT.pdf",
+    "KST8 -4in FG. Seg. D ..RT.ACME.05.31.25.pdf",
 ])
 def test_plu_filenames_carry_no_shot_numbers(filename):
     # The reason the text pass exists at all.

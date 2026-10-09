@@ -32,7 +32,7 @@ def test_a_welder_log_is_not_a_weld_log():
     # One letter apart, entirely different documents: the roster of people
     # against the register of joints.
     assert kind_for(r"x/10 Welding/Welder Log 20 LP.xlsx") == "welder_roster"
-    assert kind_for(r"x/10 Welding/Kestrel 8 DTD 4in FG SEG. B WELDER LOG.xlsx") \
+    assert kind_for(r"x/10 Welding/Kestrel 8 KST 4in FG SEG. B WELDER LOG.xlsx") \
         == "welder_roster"
     assert kind_for(r"x/10 Welding/Master_Weld_Log_Summary.csv") == "weld_log_csv"
     assert kind_for(r"x/10 Welding/Weld Log Summary.xlsx") == "weld_log_csv"

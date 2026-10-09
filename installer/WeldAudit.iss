@@ -20,7 +20,7 @@
 ; %TEMP% on every launch, and it is the shape the in-app updater can replace.
 
 #define AppName       "WeldAudit"
-#define AppPublisher  "Jacob Horton"
+#define AppPublisher  "Rowan Horton"
 #define AppExe        "WeldAudit.exe"
 #define BuildDir      "..\dist\WeldAudit"
 

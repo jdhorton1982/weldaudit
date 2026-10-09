@@ -114,12 +114,12 @@ _EXPIRY = re.compile(r"\bexp\.?\s*[:.]?\s*(\d{1,2})[.\-_/](\d{1,2})[.\-_/](\d{2,
 
 #: Noise tokens that are never a stencil or a name.
 _CERT_NOISE = re.compile(
-    r"^(XTO|SEC|IX|REQUAL|WPS|WPQ|API|1104|ASME|B31\.?3|CERT|CERTS?|"
+    r"^(ACME|SEC|IX|REQUAL|WPS|WPQ|API|1104|ASME|B31\.?3|CERT|CERTS?|"
     r"CONTINUITY|WELDER|QUALIFICATION|TEST|COUPON|COPY|SCAN|PDF)$", re.IGNORECASE
 )
 
 
-#: The scoped-cert convention: "Javier Vazquez_XTO-X60-6010-8010 Rev.1_042425_ARS.pdf".
+#: The scoped-cert convention: "Tomas Vargas_ACME-X60-6010-8010 Rev.1_042425_ARS.pdf".
 #: A welder holds one certificate per procedure, so the WPS in the name is the
 #: scope of that ticket - not decoration.
 _SCOPED_CERT = re.compile(
@@ -158,7 +158,7 @@ def parse_cert_filename(filename: str, known_stencils: set[str] | None = None) -
 
         ABF.pdf                                     stencil only
         4-8-25 ANDREW MORGAN SS GTAW ABJ.pdf        date, name, material, process, stencil
-        Craig Lunsford_XTO-SS_050224_ADL_REQUAL.pdf name, material, date, stencil, requal
+        Craig Lunsford_ACME-SS_050224_ADL_REQUAL.pdf name, material, date, stencil, requal
 
     A short surname is shaped exactly like a stencil - "Kody Babb" would yield
     ``BABB``.  Pass the stencils the weld reports actually use and only those

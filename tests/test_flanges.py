@@ -254,7 +254,7 @@ def test_a_final_pass_above_the_target_is_not_a_defect(db):
 
 
 def test_the_printed_form_has_no_fourth_round_to_check(db):
-    # PLU's logs are the same template printed, and it has no "around the
+    # Kestrel's logs are the same template printed, and it has no "around the
     # world" column at all.
     database, pid = db
     joint(database, pid, 1, round4=None)

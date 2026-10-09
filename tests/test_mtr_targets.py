@@ -93,7 +93,7 @@ def test_a_heat_in_the_weld_log_comes_first(db):
 
 
 def test_the_as_built_also_places_a_heat_in_the_ground(db):
-    # Neither PLU's nor Bluewater's weld register records a heat at all, so
+    # Neither Kestrel's nor Bluewater's weld register records a heat at all, so
     # asking only the weld log left this rank empty on two of three jobs and
     # 545 Bluewater certificates came out in no useful order.
     database, pid = db
@@ -195,10 +195,10 @@ def test_shipping_paperwork_is_not_a_certificate(filename):
 
 @pytest.mark.parametrize("filename", [
     # Halden is a flange maker; the rule matches BOL only as a whole word.
-    "HALDEN 51908 - 2IN X .5IN TOL 3M CS A105N XTO-613.pdf",
+    "HALDEN 51908 - 2IN X .5IN TOL 3M CS A105N ACME-613.pdf",
     "1B452N 8IN 300 RF BLIND NORMAILIZED.PDF",
-    "032052 - 6IN ELL 90 LR XH CS A420 WPL6 XTO-784.pdf",
-    "2316324 - 2IN 150 RFWN FLANGE XS XTO-1026.pdf",
+    "032052 - 6IN ELL 90 LR XH CS A420 WPL6 ACME-784.pdf",
+    "2316324 - 2IN 150 RFWN FLANGE XS ACME-1026.pdf",
 ])
 def test_real_certificates_are_untouched(filename):
     assert not NOT_A_CERTIFICATE.search(filename)

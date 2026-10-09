@@ -502,7 +502,7 @@ def segment_untested(db: Database, project_id: int, run_id: str) -> list[Finding
 
     Reasoning from absence, so it waits until every package has been read
     through. Having *at least one* test is not enough: seeding a single one of
-    PLU's twelve packages makes six segments look untested, every one of them
+    Kestrel's twelve packages makes six segments look untested, every one of them
     an artefact of stopping early. A package is 14 to 37 pages and the record
     can be anywhere in it, so "read" means every page.
     """

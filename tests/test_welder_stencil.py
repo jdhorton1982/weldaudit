@@ -61,7 +61,7 @@ def run(db, pid):
 
 def test_a_disagreement_is_reported(db):
     # `AFB-006` on 4IN FG SEG C: the sheet prints ARU, the map balloon says
-    # ARW, and both are welders on PLU's roster.
+    # ARW, and both are welders on Kestrel's roster.
     database, pid = db
     shot(database, pid, "AFB-006", "ARU")
     weld(database, pid, "AFB-006", "ARW")
@@ -80,7 +80,7 @@ def test_agreement_is_quiet(db):
 
 def test_a_text_read_stencil_is_checked(db):
     # The rule was restricted to `evidence='vision'` and so had never examined
-    # a sheet; the IIA forms carry the stencil in their text layer.
+    # a sheet; the NFI forms carry the stencil in their text layer.
     database, pid = db
     shot(database, pid, "AFB-006", "ARU", evidence="text")
     weld(database, pid, "AFB-006", "ARW")
@@ -90,7 +90,7 @@ def test_a_text_read_stencil_is_checked(db):
 # -- the join ---------------------------------------------------------------
 
 def test_the_same_id_on_another_segment_is_another_weld(db):
-    # PLU files seven different welds called AFB-001P, one per segment,
+    # Kestrel files seven different welds called AFB-001P, one per segment,
     # welded by five different people. Matching on the identifier alone
     # cross-joins all seven against all seven — 507 findings, 15 of them real.
     database, pid = db
@@ -112,7 +112,7 @@ def test_a_sheet_filed_in_several_books_matches_any_of_them(db):
 
 
 def test_a_weld_is_judged_on_everything_said_about_it(db):
-    # `AFB-008` on GL 31 has one sheet naming AM53 and another naming EM93,
+    # `AFB-008` on Bluewater 4 has one sheet naming AM53 and another naming EM93,
     # and the register names both. Pair-by-pair that is two disagreements;
     # taken as a joint it is none.
     database, pid = db

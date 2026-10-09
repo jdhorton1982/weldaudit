@@ -222,7 +222,7 @@ def map_welds_not_logged(db: Database, project_id: int, run_id: str) -> list[Fin
 
     Compared by NDE series rather than by segment, which is the only axis the
     two share on these jobs: the maps are filed at drawing level and the logs
-    at line level, so GL 31's isometrics sit under "(unassigned)" while its
+    at line level, so Bluewater 4's isometrics sit under "(unassigned)" while its
     weld log sits under a segment folder, and a segment-keyed comparison — the
     one REG-01 and REG-03 do — never pairs them at all.
 

@@ -42,7 +42,7 @@ def _page(lines, width=612, height=792):
     "CLIENTE / Customer: ALLIED FITTING",  # the buyer, in two languages
     "Supplier: TUBOS REUNIDOS GROUP",      # the steel, not the fitting
     "STEEL ROLLING : Mingo Junction, OH",  # where the coil was rolled
-    "Going To: MRW DI BLUEWATER MEGAPAD",     # a destination
+    "Going To: MRW DI BLUEWATER MAINPAD",     # a destination
     "MATERIAL TEST CERTIFICATE",           # the title of the form
     "Inspection Certificate 3.1",          # the title again
     "AS-ROLLED",                           # a heat treatment
@@ -122,9 +122,9 @@ def test_nothing_is_claimed_without_an_aml():
 
 def test_nearest_does_not_inherit_the_prefix_rule():
     """`match` is generous so a trade name finds its mill; `nearest` is not."""
-    aml = _aml("MEGA", "Forged Components Inc.")
-    assert aml.match("MEGAPAD TAKEAWAY").score >= 95          # the generous path
-    assert aml.nearest("MEGAPAD TAKEAWAY")[0] < mtrtext.AML_CERTAIN
+    aml = _aml("MAIN", "Forged Components Inc.")
+    assert aml.match("MAINPAD TAKEAWAY").score >= 95          # the generous path
+    assert aml.nearest("MAINPAD TAKEAWAY")[0] < mtrtext.AML_CERTAIN
     assert aml.nearest("Component")[0] < mtrtext.AML_CERTAIN
 
 
@@ -191,7 +191,7 @@ def test_a_scan_is_left_alone(db, tmp_path):
 
     database, pid = db
     doc = pymupdf.open()
-    doc.new_page(width=612, height=792).insert_text((40, 60), "XTO-417", fontsize=9)
+    doc.new_page(width=612, height=792).insert_text((40, 60), "ACME-417", fontsize=9)
     path = tmp_path / "scan.pdf"
     doc.save(str(path))
     with database.tx() as c:

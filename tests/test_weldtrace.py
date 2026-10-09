@@ -37,7 +37,7 @@ def weld_row(**over) -> str:
         "pack": "TP-1-1", "reference": "NDEFIELD-8-21-2026-40300118",
         "weld": "FW-104", "drawing": "2-D1-0-GL-4012-1-0",
         "line": "6-B1-0V-PF-4112", "category": "Field", "joint": "BW",
-        "size": "6", "wps": "XTO-ASME-P1-HYP-NACE-0",
+        "size": "6", "wps": "ACME-ASME-P1-HYP-NACE-0",
         "root": "AOO;", "fill": "AOO;", "cap": "AOO;",
         "planned": "Aug-21-2026", "welded": "Aug-21-2026",
         "material1": "PIPE", "heat1": "70097", "material2": "PIPE",

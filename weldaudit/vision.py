@@ -145,7 +145,7 @@ READER_SHEET_SCHEMA: dict[str, Any] = {
         "inspector": {"type": ["string", "null"]},
         "procedure": {
             "type": ["string", "null"],
-            "description": "Procedure/revision, e.g. 'IIA-FS-RT-002 REV 1'.",
+            "description": "Procedure/revision, e.g. 'NFI-FS-RT-002 REV 1'.",
         },
         "job_number": {"type": ["string", "null"]},
         "rows": {
@@ -330,7 +330,7 @@ WELDER_CERT_SCHEMA: dict[str, Any] = {
         },
         "wps": {
             "type": ["string", "null"],
-            "description": "Welding procedure, e.g. 'XTO-X60-6010/8010 Rev.1'.",
+            "description": "Welding procedure, e.g. 'ACME-X60-6010/8010 Rev.1'.",
         },
         "result": {
             "enum": ["PASS", "FAIL", None],
@@ -395,6 +395,25 @@ Rules that matter more than completeness:
 - A blank field is a useful answer. A confidently wrong one is not: this
   feeds an audit where a wrong heat number or weld number hides a real defect.
 """.strip()
+
+def prompt_for(kind: str) -> str:
+    """The prompt for a page kind, with this operator's name in its title.
+
+    The forms are an operator's own, and naming it helps a model that can see
+    the logo on the page. The name is configured rather than written into the
+    prompt - the next package is somebody else's - and an unconfigured build
+    asks for the form by its own title, which is what the title says anyway.
+    """
+    from .site import operator
+
+    name = operator()
+    # Appended rather than put in front of the title, so the sentence reads
+    # as English whether or not an operator is configured: "a RELEASE FOR
+    # BACKFILL on <operator>'s standard form", or just "a RELEASE FOR
+    # BACKFILL".
+    return PROMPTS[kind].replace(
+        "{on_form}", f" on {name}'s standard form" if name else "")
+
 
 PROMPTS: dict[str, str] = {
     "reader_sheet": _SHARED_RULES + """
@@ -674,7 +693,7 @@ auditor needs to make for themselves.""",
 
     "coating": _SHARED_RULES + """
 
-This page should be an XTO DAILY FIELD COATING INSPECTION REPORT — a one-page
+This page should be a DAILY FIELD COATING INSPECTION REPORT{on_form} — a one-page
 form recording a day's blasting and coating on a pipeline segment. The form
 exists in two revisions and the later one adds an NDE Weld # column and a row
 of equipment serial numbers; read whichever this page has and leave the rest
@@ -708,7 +727,7 @@ coat into a failure or the reverse.""",
 
     "backfill": _SHARED_RULES + """
 
-This page should be an XTO RELEASE FOR BACKFILL — a short one-page form
+This page should be a RELEASE FOR BACKFILL{on_form} — a short one-page form
 releasing a measured length of pipeline for the ditch to be closed over it.
 These are filed as bundles, one form per page, so read this page on its own.
 
@@ -832,7 +851,7 @@ WELD_MAP_SCHEMA: dict[str, Any] = {
         },
         "line_no": {
             "type": ["string", "null"],
-            "description": "LINE NO. from the title block, e.g. 'DTD22MP-LP-16-1A'.",
+            "description": "LINE NO. from the title block, e.g. 'KST8MP-LP-16-1A'.",
         },
         "drawing_no": {"type": ["string", "null"]},
         "sheet": {"type": ["string", "null"]},
@@ -1753,7 +1772,7 @@ class VisionReader:
             return hit
 
         schema = SCHEMAS[kind]
-        payload = self._ask(path, page_no, PROMPTS[kind], schema, clip=None)
+        payload = self._ask(path, page_no, prompt_for(kind), schema, clip=None)
 
         if tiles_for(self.tiles, kind) and not payload.get("_error"):
             payload = self._add_the_close_ups(path, page_no, kind, schema, payload)
@@ -1768,7 +1787,7 @@ class VisionReader:
         if not fragment["properties"]:
             return page                       # nothing a fragment could answer
 
-        prompt = PROMPTS[kind] + _TILE_PROMPT
+        prompt = prompt_for(kind) + _TILE_PROMPT
         readings = []
         for clip in page_tiles():
             got = self._ask(path, page_no, prompt, fragment, clip=clip)

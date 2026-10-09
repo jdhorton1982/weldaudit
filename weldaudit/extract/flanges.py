@@ -210,11 +210,11 @@ def _parse_workbook(path: str) -> list[dict]:
 # Flange maps (.pdf)
 # ---------------------------------------------------------------------------
 
-#: A drawing number as the maps and logs write them: `6-600-8-XTO-FG-0502`,
-#: `16-B60-PW-0401-01`, `8-B1-0-PO-0122`, `DTD22MP-FG-4-2C`.
+#: A drawing number as the maps and logs write them: `6-600-8-ACME-FG-0502`,
+#: `16-B60-PW-0401-01`, `8-B1-0-PO-0122`, `KST8MP-FG-4-2C`.
 _DRAWING = re.compile(
     r"\b\d{1,2}[\"']?[-_][A-Z0-9]{2,4}(?:[-_][A-Z0-9]{1,6}){2,5}\b|"
-    r"\bDTD22MP[-_][A-Z]{2}[-_]\d{1,2}[-_][0-9A-Z]+\b",
+    r"\bKST8MP[-_][A-Z]{2}[-_]\d{1,2}[-_][0-9A-Z]+\b",
     re.IGNORECASE,
 )
 

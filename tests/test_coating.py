@@ -2,7 +2,7 @@
 
 Two things here are worth more attention than the rest.
 
-The instrument grammar has to read two conventions off the same folder — PLU
+The instrument grammar has to read two conventions off the same folder — Kestrel
 writes `Positector 6000 SN 1073795 4.24.25.pdf`, Bluewater writes `HOLIDAY
 DETECTOR - 12594.pdf` — and every case below is a real filename from the
 corpus.
@@ -817,7 +817,7 @@ def test_a_blank_count_box_is_not_a_disagreement(db):
 
 
 def test_an_older_form_with_no_weld_column_is_left_alone(db):
-    # PLU's revision has no NDE Weld # column at all, so none of these rules
+    # Kestrel's revision has no NDE Weld # column at all, so none of these rules
     # have anything to say about it.
     database, pid = db
     known_weld(database, pid, "GXR-048")

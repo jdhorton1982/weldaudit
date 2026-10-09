@@ -25,7 +25,7 @@ def db(tmp_path):
 
 
 def certificate(db, pid, stencil, when, *, name="Clinton Wilson",
-                wps="XTO-X60-6010/8010 Rev.1", evidence="vision"):
+                wps="ACME-X60-6010/8010 Rev.1", evidence="vision"):
     with db.tx() as c:
         c.execute(
             """INSERT INTO welder_cert(project_id, segment, stencil, name,
@@ -72,9 +72,9 @@ def test_a_welder_with_several_tickets_matches_any_of_them(db):
     # A welder holds one certificate per procedure — ARS has three — and the
     # log records a single date.
     database, pid = db
-    certificate(database, pid, "ARS", "2025-04-24", wps="XTO-X60-6010-8010")
-    certificate(database, pid, "ARS", "2025-04-26", wps="XTO-ASME-P1-HYP-NACE")
-    roster(database, pid, "ARS", "2025-04-26", name="Javier Vazquez")
+    certificate(database, pid, "ARS", "2025-04-24", wps="ACME-X60-6010-8010")
+    certificate(database, pid, "ARS", "2025-04-26", wps="ACME-ASME-P1-HYP-NACE")
+    roster(database, pid, "ARS", "2025-04-26", name="Tomas Vargas")
     assert run(database, pid) == []
 
 

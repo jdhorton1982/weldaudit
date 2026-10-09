@@ -194,15 +194,15 @@ def test_superseded_entries_cannot_be_the_only_approval():
 # -- MTR filenames ----------------------------------------------------------
 
 @pytest.mark.parametrize("filename,heat", [
-    ("071B33 - 16IN 150 RFWN FLANGE STD A105N XTO-414.pdf", "071B33"),
-    ("377314022-003 ~ 16IN 150 TRUNNION BV CS NACE XTO-304.pdf", "377314022-003"),
+    ("071B33 - 16IN 150 RFWN FLANGE STD A105N ACME-414.pdf", "071B33"),
+    ("377314022-003 ~ 16IN 150 TRUNNION BV CS NACE ACME-304.pdf", "377314022-003"),
     ("4F214-FLG-WN-2IN-CL600-SCH160-A105N.pdf", "4F214"),
     ("FLANGE 3 INCH SCH 80- 4F318P.pdf", "4F318P"),
     ("45° 8 INCH 3R SEGM-5J17DK.pdf", "5J17DK"),
     ("12589 375 X 52.pdf", "12589"),
     ("PIPE 16 INCH .375- 2245438.pdf", "2245438"),
     # A letters-only heat is only safe to take from the "<heat> - <desc>" form.
-    ("CCDS - 2IN 300 RF BLIND 1IN TAP SS XTO-219.pdf", "CCDS"),
+    ("CCDS - 2IN 300 RF BLIND 1IN TAP SS ACME-219.pdf", "CCDS"),
     # Short trailing heats are real: "FLANGE 16 INCH STD EL8".
     ("FLANGE 16 INCH STD EL8.pdf", "EL8"),
 ])
@@ -222,7 +222,7 @@ def test_filenames_with_no_heat_report_none():
 
 
 def test_attributes_are_read_alongside_the_heat():
-    ident = mtrname.parse("071B33 - 16IN 150 RFWN FLANGE STD A105N XTO-414.pdf")
+    ident = mtrname.parse("071B33 - 16IN 150 RFWN FLANGE STD A105N ACME-414.pdf")
     assert ident.nps == 16 and ident.schedule == "STD" and ident.spec == "A105N"
     assert "3.0 Flanges" in ident.categories
 

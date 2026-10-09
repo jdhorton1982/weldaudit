@@ -7,7 +7,7 @@ sheet — and every one becomes a critical finding about a joint that does not
 exist. Each case below is text taken from a real drawing.
 
 The grouping tests matter for the opposite reason: the parts of one callout
-arrive as separate spans, stacked vertically on GL 31 and side by side on
+arrive as separate spans, stacked vertically on Bluewater 4 and side by side on
 Kestrel 8 because that drawing is plotted rotated, and a callout whose welders
 and date do not reach it is a weld with no crew and no date.
 """
@@ -42,10 +42,10 @@ def test_identifier_tokens(token, expected):
 
 
 @pytest.mark.parametrize("token", [
-    "DTD22-LP-16-1A",              # the line number - yields LP-016 unguarded
-    "DTD22MP-LP-16-1A",
+    "KST8-LP-16-1A",              # the line number - yields LP-016 unguarded
+    "KST8MP-LP-16-1A",
     "12-Mar-2025",                 # a date - yields MAR-2025 unguarded
-    "NI.2024.14306.CAP.01",        # the AFE
+    "AF.2024.00000.CAP.01",        # the AFE
     '16"-A1-0-PG-0417',            # the drawing number
     "10'", "8-01-25", "ELBOW-090", "THE-150", "AND-2",
 ])

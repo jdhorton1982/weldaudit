@@ -40,7 +40,7 @@ _META: dict[str, tuple[str, ...]] = {
     "unit":        ("unit:",),
     "job_name":    ("job name",),
     "contractor":  ("contractor",),
-    "advisor":     ("construction advis", "const advisor", "xto construction"),
+    "advisor":     ("construction advis", "const advisor"),
     "engineer":    ("project engineer",),
     "inspector":   ("job lead inspector", "lead inspector"),
     "report_date": ("today's date", "todays date", "date:"),
@@ -58,6 +58,24 @@ def _clean(v: Any) -> str:
     if isinstance(v, (datetime, date)):
         return v.date().isoformat() if isinstance(v, datetime) else v.isoformat()
     return re.sub(r"\s+", " ", str(v)).strip()
+
+
+def _labelled(label: str, variants: tuple[str, ...]) -> bool:
+    """Whether a cell's text is one of these labels.
+
+    Matched as a prefix, and again with the first word dropped. Operators
+    print their own name in front of the field - "ACME Construction Advisor"
+    for "Construction Advisor" - and the name differs with every operator, so
+    listing them would mean a new entry per customer and a silently unread
+    column for everybody not on the list.
+
+    Dropping a word is safe here because the labels are distinctive phrases
+    rather than single words: no field's alias is the tail of another's.
+    """
+    if any(label.startswith(v) for v in variants):
+        return True
+    _, _, tail = label.partition(" ")
+    return bool(tail) and any(tail.startswith(v) for v in variants)
 
 
 def _norm_label(v: Any) -> str:
@@ -91,7 +109,7 @@ def _read_meta(grid: list[list[Any]]) -> dict[str, str]:
             for field, variants in _META.items():
                 if field in meta:
                     continue
-                if any(label.startswith(v) for v in variants):
+                if _labelled(label, variants):
                     for j in range(i + 1, min(i + 12, len(row))):
                         val = _clean(row[j])
                         if val and _norm_label(row[j]) not in _flat_labels():
@@ -172,7 +190,7 @@ def _link_nde(welds: list[dict], known: set[str] | None) -> None:
 
     With no known prefixes, nothing is accepted. That is the case where we know
     *least* about this job's numbering, not most: treating an empty vocabulary
-    as "accept anything" turns a spool number like ``DTD22MP-LP-16-1B`` into a
+    as "accept anything" turns a spool number like ``KST8MP-LP-16-1B`` into a
     citation of report ``LP-016``, and then into findings about a weld that
     does not exist. The note is kept either way, and NDE-09 reports what could
     not be resolved.

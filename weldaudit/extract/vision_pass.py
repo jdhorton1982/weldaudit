@@ -82,7 +82,7 @@ def mtr_targets(db: Database, project_id: int, limit: int | None = None) -> list
 
     **Installed means any register says so**, not just the weld log. Asking
     only ``weld.heat_us``/``heat_ds`` left that first rank empty on two of the
-    three jobs — neither PLU's nor Bluewater's weld register records a heat at all
+    three jobs — neither Kestrel's nor Bluewater's weld register records a heat at all
     — so 545 Bluewater certificates came out in no useful order and a ``--limit``
     would have bought stud-bolt and valve dossiers ahead of the pipe in the
     ground. The heat maps and the as-builts between them place 593 heats on
@@ -163,7 +163,7 @@ def reader_sheet_targets(db: Database, project_id: int,
     earlier version of this function - which selected ``FROM nde_shot`` -
     could not see one.  The pages the vision pass exists for were the only ones
     it could never be pointed at.  Thirty sheets across the corpus are in that
-    state, eleven of them PLU's, and the tool currently knows nothing whatever
+    state, eleven of them Kestrel's, and the tool currently knows nothing whatever
     about them: not a weld, not a date, not a technician.
 
     After those, sheets behind a shot the weld log calls rejected, where
@@ -332,8 +332,8 @@ def weld_map_targets(db: Database, project_id: int,
 
     **A map is skipped once it has given up what its title promises**, and the
     two halves are judged separately. Most of these isometrics are plotted from
-    CAD and their callouts survive as text: all fourteen of PLU's parse and
-    thirteen of GL 31's sixteen, which is 526 welds already in hand and not
+    CAD and their callouts survive as text: all fourteen of Kestrel's parse and
+    thirteen of Bluewater 4's sixteen, which is 526 welds already in hand and not
     worth paying to read again.
 
     Judging the halves apart is what makes the test worth anything. Bluewater's
@@ -407,7 +407,7 @@ _HYDRO_NAME = re.compile(
 )
 
 #: A genuine package is a plan, a requirements sheet, a record, recorder
-#: charts and calibration certificates - never one or two pages.  GL 31 files
+#: charts and calibration certificates - never one or two pages.  Bluewater 4 files
 #: 114 mill certificates under HYDRO TEST DOCUMENTS and they are all short,
 #: which is what separates them from the tests when the folder cannot.
 MIN_PACKAGE_PAGES = 5
@@ -439,7 +439,7 @@ def _reads_as_a_test(path: str) -> bool:
 
     Every genuine package in the corpus is either a scan with no text layer or
     a searchable plan that says "Pressure Test" on its first page.  What is
-    filed alongside them — GL 31's mill certificates, valve dossiers and weld
+    filed alongside them — Bluewater 4's mill certificates, valve dossiers and weld
     logs — carries a full text layer of something else entirely, and this is
     the only signal that separates the two once the folder has stopped being
     informative.
@@ -497,7 +497,7 @@ def _hydro_rank(name: str, named: bool) -> tuple[int, str]:
     return 1, "filed under the hydro test section"
 
 
-#: Reference material filed in every coating folder: the XTO coatings
+#: Reference material filed in every coating folder: the ACME coatings
 #: specification, and placeholder sheets the crews scan in when a segment had
 #: no coating activity.
 _COATING_BOILERPLATE = re.compile(

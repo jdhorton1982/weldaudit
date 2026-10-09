@@ -1,6 +1,6 @@
 """Reading a piping isometric: the weld register and the material installed.
 
-The payloads mirror the real Kestrel 8 drawings for line DTD22MP-LP-16-1A — the
+The payloads mirror the real Kestrel 8 drawings for line KST8MP-LP-16-1A — the
 weld map with five balloon callouts (id / welders / date) and the heat map with
 five boxed heats, one of which is boxed twice.
 
@@ -26,9 +26,9 @@ from weldaudit.rules import materials as mrules  # noqa: E402
 
 WELD_MAP_PAGE = {
     "page_is_isometric": True,
-    "line_no": "DTD22MP-LP-16-1A", "drawing_no": "DN-PL22M-PL-LD-MP-ISO-0015-001",
+    "line_no": "KST8MP-LP-16-1A", "drawing_no": "DN-PL22M-PL-LD-MP-ISO-0015-001",
     "sheet": "1 of 3", "revision": "0", "service": "LP GAS",
-    "afe": "NI.2024.14306.CAP.01",
+    "afe": "AF.2024.00000.CAP.01",
     "weld_callouts": [
         {"weld_id": "AFB-18", "welders": "AFM/ARV", "date": "06/01/25",
          "signed_off": True},
@@ -50,9 +50,9 @@ WELD_MAP_PAGE = {
 
 HEAT_MAP_PAGE = {
     "page_is_isometric": True,
-    "line_no": "DTD22MP-LP-16-1A", "drawing_no": "DN-PL22M-PL-LD-MP-ISO-0015-001",
+    "line_no": "KST8MP-LP-16-1A", "drawing_no": "DN-PL22M-PL-LD-MP-ISO-0015-001",
     "sheet": "1 of 1", "revision": "0", "service": "LP GAS",
-    "afe": "NI.2024.14306.CAP.01",
+    "afe": "AF.2024.00000.CAP.01",
     "weld_callouts": [],
     "heat_callouts": [
         {"heat": "NN0446", "note": None},
@@ -119,7 +119,7 @@ def test_a_callout_supplies_the_nde_id_the_weld_reports_lack(db):
     assert row["nde_id"] == "AFB-018"          # normalised for joining
     assert row["welder_root"] == "AFM/ARV"
     assert row["date_welded"] == "2025-06-01"
-    assert row["line"] == "DTD22MP-LP-16-1A"
+    assert row["line"] == "KST8MP-LP-16-1A"
 
 
 def test_a_dashed_american_date_is_parsed_too(db):
@@ -173,7 +173,7 @@ def test_installed_heats_carry_their_line_and_drawing(db):
     run(database, pid, "weld_map", StubReader([HEAT_MAP_PAGE]), [_hm()])
     row = database.one(
         "SELECT * FROM installed_heat WHERE project_id=? AND heat='NN0446'", (pid,))
-    assert row["line"] == "DTD22MP-LP-16-1A"
+    assert row["line"] == "KST8MP-LP-16-1A"
     assert row["heat_key"] == "NN0446"
 
 

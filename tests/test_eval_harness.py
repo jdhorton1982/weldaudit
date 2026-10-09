@@ -66,9 +66,23 @@ def test_punctuation_is_not_a_mistake():
     assert counts(CERT, loose)["crit_wrong"] == 0
 
 
+def _a_sheet_with_rows(least: int = 12):
+    """Any reader sheet in the corpus with enough rows to truncate.
+
+    Chosen by shape rather than by filename. The corpus is a customer's own
+    documents and lives in private/; naming one here would put the name in a
+    public test, and would tie the test to a particular job besides.
+    """
+    found = [p for p in PAGES
+             if len((p.get("expected") or {}).get("rows") or ()) >= least]
+    if not found:
+        pytest.skip(f"no page in the corpus has {least} rows")
+    return max(found, key=lambda p: len(p["expected"]["rows"]))
+
+
 def test_a_missing_row_is_counted_not_skipped():
     # Reading nine of thirty rows must not look like a perfect score on nine.
-    sheet = next(p for p in PAGES if p["document"].startswith("DTD22 NDE 5.29"))
+    sheet = _a_sheet_with_rows()
     short = copy.deepcopy(sheet["expected"])
     short["rows"] = short["rows"][:9]
     got = counts(sheet, short)
@@ -77,7 +91,7 @@ def test_a_missing_row_is_counted_not_skipped():
 
 def test_an_invented_reject_is_the_worst_case():
     # The failure the whole exercise exists to catch.
-    sheet = next(p for p in PAGES if p["document"].startswith("DTD22 NDE 6.30"))
+    sheet = _a_sheet_with_rows(1)
     flipped = copy.deepcopy(sheet["expected"])
     flipped["rows"][0]["result"] = "REJ"
     assert counts(sheet, flipped)["crit_wrong"] == 1
